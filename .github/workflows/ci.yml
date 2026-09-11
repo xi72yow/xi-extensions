@@ -125,22 +125,28 @@ jobs:
         if: always()
         run: rm -f crx-key.pem
 
-      - name: Inspect and test install
+      - name: Inspect packages
         run: |
           for deb in packages/*.deb; do
             echo "=== ${deb} ==="
             dpkg-deb -I "$deb"
             dpkg-deb -c "$deb"
-            sudo dpkg -i "$deb" || sudo apt-get -f install -y
           done
 
-      - name: Verify installed files
+      # the runner cannot satisfy gnome-shell (>= 48~), so the dependency is
+      # forced rather than resolved: what is under test here is the payload,
+      # and letting apt resolve it would uninstall the package again
+      - name: Test install
         run: |
+          sudo dpkg -i --force-depends packages/*.deb
+
           test -f /usr/share/gnome-shell/extensions/xiws@xi72yow/extension.js
           test -f /usr/share/glib-2.0/schemas/org.gnome.shell.extensions.xiws.gschema.xml
           test -f /usr/share/xi-extensions/xiws.crx
           test -f /usr/share/google-chrome/extensions/joljhccfdnpdncplopfkfdhpdlfpdhap.json
           echo "installed as expected"
+
+          sudo dpkg -r --force-depends gnome-shell-extension-xiws chrome-extension-xiws
 
       - name: Upload packages
         uses: actions/upload-artifact@v7
