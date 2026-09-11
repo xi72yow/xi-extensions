@@ -269,6 +269,10 @@ The TLD `.invalid` is reserved by RFC 2606 and never resolves, so with the exten
 
 Sources: [web_accessible_resources](https://developer.chrome.com/docs/extensions/reference/manifest/web-accessible-resources), [Puppeteer issue 1796](https://github.com/puppeteer/puppeteer/issues/1796)
 
+**An externally installed extension is flagged in the safety check.** Installed through the preferences file, the extension loads and runs, but Chrome lists it under "Chrome cannot verify where this extension came from" and suggests removing it. That is a statement about provenance rather than a malfunction, since the origin cannot be checked against a store listing.
+
+Removing the notice would take either a store listing or a managed policy under `/etc/opt/chrome/policies/managed/`, where an `ExtensionSettings` entry with `installation_mode: normal_installed` marks the extension as administratively installed. Shipping that policy in the package is possible and deliberately not done for now, since it would also take the extension out of the user's own control.
+
 **The sentinel mechanism was implemented and verified.** The Chrome extension under `chrome/xiws/` was tested against Chrome 152, loaded as an unpacked extension.
 
 | Checked                                                            | Result                                                 |
