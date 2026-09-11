@@ -43,7 +43,7 @@ Enabling an extension does not belong into the package, it lives in the dconf of
 
 `chrome/xiws` ships as a signed CRX with a preferences file pointing at it. On Linux this is how Chrome picks up a locally installed extension, without a store listing, a policy or an update server.
 
-The extension id is pinned rather than derived from wherever the extension happens to sit: the public half of the signing key is carried in `manifest.json`, which fixes the id to `joljhccfdnpdncplopfkfdhpdlfpdhap` for the packaged CRX and for an unpacked load alike. The private half never enters the repository. It is expected at `~/.config/xi-extensions/chrome-xiws.pem` locally, or in the `CHROME_CRX_KEY` secret in CI, and `scripts/pack-crx.js` refuses to sign with a key that does not match the manifest.
+The extension id is pinned rather than derived from wherever the extension happens to sit: the public half of the signing key is carried in `manifest.json`, which fixes the id to `joljhccfdnpdncplopfkfdhpdlfpdhap` for the packaged CRX and for an unpacked load alike. The private half never enters the repository. It is expected at `~/.ssh/chrome-xiws.pem` locally, overridable through `CRX_KEY`, or in the `CHROME_CRX_KEY` secret in CI, and `scripts/pack-crx.js` refuses to sign with a key that does not match the manifest. Losing it changes the extension id, and Chrome then treats the extension as a different one, with its storage left orphaned.
 
 A package for `webtweaks` is still pending, along with the rework noted above.
 
@@ -90,5 +90,5 @@ The Chrome extensions are loaded through `chrome://extensions` as unpacked exten
 Packaging the Chrome extension locally needs the private key:
 
 ```bash
-CRX_KEY=~/.config/xi-extensions/chrome-xiws.pem ./scripts/build-crx.sh /tmp/crx
+CRX_KEY=~/.ssh/chrome-xiws.pem ./scripts/build-crx.sh /tmp/crx
 ```

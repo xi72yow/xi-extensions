@@ -11,7 +11,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="${SCRIPT_DIR}/.."
 OUT_DIR="${1:-${REPO_ROOT}/debian/chrome}"
-KEY="${CRX_KEY:-${HOME}/.config/xi-extensions/chrome-xiws.pem}"
+KEY="${CRX_KEY:-${HOME}/.ssh/chrome-xiws.pem}"
 
 if [ ! -f "${KEY}" ]; then
   echo "Error: no CRX key at ${KEY}. Set CRX_KEY to its location." >&2
