@@ -288,6 +288,10 @@ Tearing down a window removes every tab one by one. Without the check on `isWind
 
 **Applications must not be launched through `GLib.spawn`** from within the extension, otherwise they end up as child processes of `gnome-shell`. Launching goes through `Gio.AppInfo` respectively `Shell.AppSystem`, which places them into their own systemd scopes.
 
+**A per cent sign in the commandline has to be escaped.** `Gio.AppInfo.create_from_commandline` parses its argument as a desktop entry exec string, in which `%` opens a field code. The `%2F` of a percent encoded workspace name was therefore read as the unknown code `%2`, dropped, and left its `F` behind: `trunshopdev/trunshop24` arrived at the Chrome extension as `trunshopdevFtrunshop24`, and its bookmark folder carries that name. Verified by launching a script that prints its arguments, once with and once without escaping. Since no invocation here ever means a field code, `launch` doubles every per cent sign, which the specification defines as the escape for a literal one.
+
+Folders written under the old names stay behind and are not migrated. They are orphaned rather than lost, since the state is written again as soon as such a workspace closes.
+
 ## Settings
 
 All of these live under `/org/gnome/shell/extensions/xiws/` and can be dumped with `dconf dump` for backup.

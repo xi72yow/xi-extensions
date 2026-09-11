@@ -220,8 +220,13 @@ function placeWindow(window, layout) {
 
 function launch(commandline, workspaceIndex) {
   try {
+    // the commandline is parsed as a desktop entry exec string, where a per
+    // cent sign opens a field code. the %2F of an encoded workspace name was
+    // read as the unknown code %2 and dropped, leaving a literal F behind and
+    // turning trunshopdev/trunshop24 into trunshopdevFtrunshop24. nothing here
+    // ever means a field code, so every per cent sign is escaped.
     const appInfo = Gio.AppInfo.create_from_commandline(
-      commandline,
+      commandline.replace(/%/g, '%%'),
       null,
       Gio.AppInfoCreateFlags.NONE,
     )
