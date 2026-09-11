@@ -1,0 +1,39 @@
+Source: xi-extensions
+Section: gnome
+Priority: optional
+Maintainer: xi72yow <65042627+xi72yow@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13),
+               nodejs,
+               zip
+Standards-Version: 4.7.0
+Homepage: https://github.com/xi72yow/xi-extensions
+Rules-Requires-Root: no
+
+Package: gnome-shell-extension-xiws
+Architecture: all
+Depends: ${misc:Depends},
+         gnome-shell (>= 48~),
+         gnome-shell (<< 49~)
+Description: dev workspaces for GNOME Shell
+ Opens and switches project sessions from a searchable picker in the panel.
+ A workspace bundles a project directory with the applications belonging to
+ it: the editor, a browser window and the git client.
+ .
+ The version bounds on gnome-shell are deliberate. GNOME Shell breaks
+ extension API compatibility between major releases, so the package refuses
+ to stay installed across an unverified shell upgrade.
+
+Package: chrome-extension-xiws
+Architecture: all
+Depends: ${misc:Depends}
+Recommends: google-chrome-stable
+Description: chrome counterpart to the xiws workspace picker
+ Persists the tabs of a Chrome window per xiws workspace and restores them
+ when that workspace is opened again. The durable copy lives in bookmarks,
+ so it travels with the Chrome account.
+ .
+ The extension is registered through a preferences file under
+ /usr/share/google-chrome/extensions, which is how Chrome picks up a locally
+ installed extension on Linux without a store listing or an update server.
+ Chrome itself is only recommended, since the package is equally usable with
+ another channel of the browser.

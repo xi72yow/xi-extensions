@@ -1,0 +1,14 @@
+{
+  "name": "web-tweaks",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "http-server -c5",
+    "prepare": "chmod +x .hooks/pre-commit && chmod +x .hooks/commit-msg && git config core.hooksPath .hooks",
+    "build:icons": "convert -background none icon.svg -resize 16x16 icon-16.png && convert -background none icon.svg -resize 48x48 icon-48.png && convert -background none icon.svg -resize 128x128 icon-128.png && convert -background none icon.svg -resize 256x256 icon-256.png && convert -background none icon.svg -resize 512x512 icon-512.png"
+  },
+  "keywords": [],
+  "author": "xi72yow",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}

@@ -1,0 +1,5 @@
+xi-extensions (0.1.0) unstable; urgency=medium
+
+  * Initial packaging with the xiws workspace picker.
+
+ -- xi72yow <65042627+xi72yow@users.noreply.github.com>  Sat, 05 Sep 2026 20:36:18 +0200

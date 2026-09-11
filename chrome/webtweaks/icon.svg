@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Gradient definition -->
+  <defs>
+    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#af0069;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ffbb00;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Tools Icon fullsize -->
+  <g transform="scale(5.33, 5.33)">
+    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+    <path d="M3 21h4l13 -13a1.5 1.5 0 0 0 -4 -4l-13 13v4" stroke="#ffbb00" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M14.5 5.5l4 4" stroke="#ffbb00" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M12 8l-5 -5l-4 4l5 5" stroke="#ffbb00" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M7 8l-1.5 1.5" stroke="#ffbb00" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M16 12l5 5l-4 4l-5 -5" stroke="#ffbb00" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M16 17l-1.5 1.5" stroke="#ffbb00" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M3 21h4l13 -13a1.5 1.5 0 0 0 -4 -4l-13 13v4" stroke="url(#iconGradient)" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M14.5 5.5l4 4" stroke="url(#iconGradient)" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M12 8l-5 -5l-4 4l5 5" stroke="url(#iconGradient)" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M7 8l-1.5 1.5" stroke="url(#iconGradient)" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M16 12l5 5l-4 4l-5 -5" stroke="url(#iconGradient)" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M16 17l-1.5 1.5" stroke="url(#iconGradient)" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

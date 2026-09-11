@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+*.deb
+*.crx
+*.pem
+
+# dpkg-buildpackage writes next to the source tree
+/debian/.debhelper/
+/debian/files
+/debian/*.substvars
+/debian/*.debhelper.log
+/debian/gnome-shell-extension-xiws/
+/debian/chrome-extension-xiws/
+/debian/chrome/

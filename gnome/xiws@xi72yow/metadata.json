@@ -1,0 +1,9 @@
+{
+  "uuid": "xiws@xi72yow",
+  "name": "xiws",
+  "description": "Dev workspaces: open and switch project sessions from a searchable picker.",
+  "shell-version": ["48"],
+  "version": 1,
+  "settings-schema": "org.gnome.shell.extensions.xiws",
+  "url": "https://github.com/xi72yow/xi-extensions"
+}

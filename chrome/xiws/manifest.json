@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "xiws",
+  "version": "0.1.0",
+  "description": "Persists Chrome tabs per xiws dev workspace and restores them on open.",
+  "permissions": ["tabs", "storage", "alarms", "bookmarks"],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsRUg83vLenvGyUKkwSZcHfglp5Q+mAlq1qj7GJ+08+tbMafsoaDSLbdYwbiH9n5/s8GQT3u7ytRAgcT7ShJdkGqLUVMSNPSYsMZEw6+wBZychbln8sbmRTBTtwe7ZDI3vhOfcGFud7dUO2VAs+CvHMv5eK2MeINbdb2ZsRXg9gLX7HdaWepr6O9jNQEqQLtcpxOGwaXzd4h/XV0BXqNh2KAM9ea+70UPDX8SnmMRKmIFfy1rne7+r2bHCZN3Fs018J2V0HpxEi5iC6B0YPCRyuse36dnajp8hJexqh/5l2i8mo91rgfWrm4llXjodU0cT51iiAhPGbiPUB5F4CM4UwIDAQAB",
+  "background": {
+    "service_worker": "background.js"
+  }
+}

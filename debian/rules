@@ -1,0 +1,12 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+# the crx is signed at build time, the key comes from CRX_KEY and never from
+# the source tree
+override_dh_auto_build:
+	./scripts/build-crx.sh debian/chrome
+
+override_dh_auto_clean:
+	rm -rf debian/chrome

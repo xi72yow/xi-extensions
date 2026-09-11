@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.xiws" path="/org/gnome/shell/extensions/xiws/">
+    <key name="toggle-picker" type="as">
+      <default><![CDATA[['<Super>w']]]></default>
+      <summary>Open the workspace picker</summary>
+    </key>
+    <key name="open-browser" type="as">
+      <default><![CDATA[['<Super>e']]]></default>
+      <summary>Open or focus the browser of the current session</summary>
+    </key>
+    <key name="open-git" type="as">
+      <default><![CDATA[['<Super>d']]]></default>
+      <summary>Open or focus the git client for the current session</summary>
+    </key>
+    <key name="snap-presets" type="s">
+      <default><![CDATA['[{"name":"Three column","tiles":[{"x":0,"y":0,"width":0.2185,"height":1},{"x":0.2185,"y":0,"width":0.5398,"height":1},{"x":0.7583,"y":0,"width":0.2417,"height":0.5},{"x":0.7583,"y":0.5,"width":0.2417,"height":0.5}]},{"name":"Halves","tiles":[{"x":0,"y":0,"width":0.5,"height":1},{"x":0.5,"y":0,"width":0.5,"height":1}]},{"name":"Third left","tiles":[{"x":0,"y":0,"width":0.33,"height":1},{"x":0.33,"y":0,"width":0.67,"height":1}]},{"name":"Two thirds left","tiles":[{"x":0,"y":0,"width":0.67,"height":1},{"x":0.67,"y":0,"width":0.33,"height":1}]}]']]></default>
+      <summary>Snap zone presets, each a name and a list of tiles</summary>
+      <description>Tiles are fractions of the work area. Held down while dragging, the modifier key highlights the zone of the active preset under the pointer and the window is placed there on release.</description>
+    </key>
+    <key name="snap-preset" type="i">
+      <default>0</default>
+      <summary>Index of the active preset in snap-presets</summary>
+    </key>
+    <key name="snap-modifier" type="s">
+      <default>'control'</default>
+      <summary>Modifier that arms snapping while dragging a window</summary>
+      <choices>
+        <choice value="control"/>
+        <choice value="shift"/>
+        <choice value="alt"/>
+        <choice value="super"/>
+      </choices>
+    </key>
+    <key name="toggle-clipboard" type="as">
+      <default><![CDATA[['<Super>c']]]></default>
+      <summary>Open the clipboard history</summary>
+    </key>
+    <key name="clipboard-size" type="i">
+      <default>200</default>
+      <summary>How many clipboard entries are kept</summary>
+    </key>
+    <key name="clipboard-ignore-passwords" type="b">
+      <default>true</default>
+      <summary>Skip entries marked by a password manager</summary>
+      <description>Managers announce them through the x-kde-passwordManagerHint mime type. Sources that do not set it, such as browsers and terminals, are not covered by this.</description>
+    </key>
+    <key name="search-depth" type="i">
+      <default>3</default>
+      <summary>How many directory levels below a search path are scanned</summary>
+      <description>A directory holding a .git is taken as a repository and not descended into, anything else is followed until this depth.</description>
+    </key>
+    <key name="search-exclude" type="as">
+      <default>['node_modules','target','dist','build','vendor','venv','__pycache__']</default>
+      <summary>Directory names never descended into while scanning</summary>
+      <description>These hold dependencies or build output and never a project of their own, so skipping them keeps deeper scans cheap.</description>
+    </key>
+    <key name="search-paths" type="as">
+      <default>['~/Schreibtisch','~/Workplace']</default>
+      <summary>Directories scanned for git repositories</summary>
+    </key>
+    <key name="home-label" type="s">
+      <default>'Persönlich'</default>
+      <summary>Name of the reserved workspace in the picker</summary>
+      <description>Listed first so the workspace below the session range is always reachable from the picker, not only through its shortcut.</description>
+    </key>
+    <key name="first-workspace-index" type="i">
+      <default>1</default>
+      <summary>Lowest GNOME workspace index usable for sessions, zero based</summary>
+      <description>Workspaces below this index are left alone, so the first one stays reserved for personal use.</description>
+    </key>
+    <key name="browser-command" type="s">
+      <default>'google-chrome'</default>
+      <summary>Browser binary used to open a workspace window</summary>
+    </key>
+    <key name="browser-desktop-id" type="s">
+      <default>'google-chrome.desktop'</default>
+      <summary>Desktop id used to detect whether the browser is already running</summary>
+    </key>
+    <key name="session-desktop-ids" type="as">
+      <default>['dev.zed.Zed.desktop','google-chrome.desktop','github-desktop.desktop']</default>
+      <summary>Applications whose windows are moved onto the session workspace</summary>
+      <description>Resolved through the shell window tracker, which knows the window to application mapping already.</description>
+    </key>
+    <key name="session-layout" type="s">
+      <default><![CDATA['[{"app":"google-chrome.desktop","x":0,"y":0,"width":0.5,"height":1},{"app":"dev.zed.Zed.desktop","x":0.5,"y":0,"width":0.5,"height":1},{"app":"github-desktop.desktop","center":true,"background":true}]']]></default>
+      <summary>Slot per application, as a fraction of the work area</summary>
+      <description>A JSON array of objects with app plus either x and y or center, and optionally width and height as fractions of the work area. Without width and height the window keeps its own size and is only moved. The flag background lowers it behind the others. Applications without an entry keep their placement, an empty array disables placement entirely.</description>
+    </key>
+    <key name="git-desktop-id" type="s">
+      <default>'github-desktop.desktop'</default>
+      <summary>Application that follows the active session instead of living on a workspace</summary>
+    </key>
+    <key name="claim-window-classes" type="as">
+      <default>[]</default>
+      <summary>Additional window classes claimed on top of session-desktop-ids</summary>
+      <description>Fallback for windows the shell cannot map to an application. Matched case insensitively against the window class and its instance.</description>
+    </key>
+    <key name="recent-workspaces" type="as">
+      <default>[]</default>
+      <summary>Recently opened workspaces, most recent first</summary>
+    </key>
+    <key name="recent-count" type="i">
+      <default>7</default>
+      <summary>How many recent workspaces are listed while the search is empty</summary>
+    </key>
+    <key name="claim-seconds" type="i">
+      <default>25</default>
+      <summary>How long newly created windows are claimed after opening a session</summary>
+    </key>
+    <key name="editor-command" type="s">
+      <default>'zed --new'</default>
+      <summary>Editor command, the project path is appended</summary>
+    </key>
+    <key name="editor-desktop-id" type="s">
+      <default>'dev.zed.Zed.desktop'</default>
+      <summary>Desktop id of the editor, used when restoring a stored session</summary>
+    </key>
+    <key name="session-apps" type="s">
+      <default>'{}'</default>
+      <summary>Arrangement last seen per workspace, as JSON</summary>
+      <description>Maps a workspace name to the same tile format as session-layout, capturing which applications were open and where. Written whenever the picker opens and preferred over session-layout when reopening.</description>
+    </key>
+  </schema>
+</schemalist>

@@ -1,0 +1,1263 @@
+<!doctype html>
+<html lang="de">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>WebTweaks</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                width: 400px;
+                max-height: 600px;
+                background: linear-gradient(135deg, #1e1e1e, #2a2a2a);
+                color: #f0f0f0;
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                    "Helvetica Neue", Arial, sans-serif;
+                overflow-y: auto;
+            }
+
+            .container {
+                padding: 0;
+                position: relative;
+            }
+
+            h2 {
+                text-align: center;
+                padding: 15px;
+                background: rgba(0, 0, 0, 0.3);
+                margin-bottom: 10px;
+                font-size: 18px;
+                letter-spacing: 2px;
+            }
+
+            #openInWindow {
+                position: absolute;
+                top: 15px;
+                right: 15px;
+                background: transparent;
+                border: 1px solid #555;
+                color: #aaa;
+                padding: 4px 8px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 11px;
+                transition: all 0.2s;
+                z-index: 10;
+            }
+
+            #openInWindow:hover {
+                border-color: #777;
+                color: #fff;
+            }
+
+            .section {
+                padding: 15px;
+                margin-bottom: 10px;
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 8px;
+            }
+
+            h3 {
+                margin-bottom: 15px;
+                font-size: 16px;
+                color: #fff;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .input-group {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 10px;
+            }
+
+            input[type="text"],
+            input[type="number"],
+            input[type="password"] {
+                flex: 1;
+                padding: 8px;
+                background: rgba(0, 0, 0, 0.3);
+                border: 1px solid #444;
+                color: #fff;
+                border-radius: 4px;
+            }
+
+            input:focus {
+                outline: none;
+                border-color: #007acc;
+            }
+
+            .btn {
+                padding: 8px 16px;
+                background: #333;
+                color: #fff;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+
+            .btn-add {
+                background: #4caf50;
+                padding: 8px 12px;
+                font-weight: bold;
+            }
+
+            .btn-add:hover {
+                background: #5cbf60;
+            }
+
+            .btn-primary {
+                background: linear-gradient(135deg, #007acc, #005a99);
+                font-weight: 500;
+                margin-top: 10px;
+                width: 100%;
+            }
+
+            .btn-primary:hover {
+                background: linear-gradient(135deg, #0086dd, #0066aa);
+            }
+
+            .btn-small {
+                padding: 4px 8px;
+                font-size: 12px;
+                background: #444;
+            }
+
+            .btn-small:hover {
+                background: #555;
+            }
+
+            /* Speed Control Styles */
+            .speed-section {
+                margin-bottom: 15px;
+            }
+
+            .current-site {
+                background: rgba(0, 0, 0, 0.2);
+                padding: 12px;
+                border-radius: 6px;
+                margin-bottom: 15px;
+            }
+
+            .site-info {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 10px;
+                font-size: 13px;
+            }
+
+            .site-url {
+                color: #4caf50;
+                font-weight: 500;
+            }
+
+            .speed-control {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .speed-slider {
+                flex: 1;
+                height: 4px;
+                background: #444;
+                outline: none;
+                -webkit-appearance: none;
+                border-radius: 2px;
+            }
+
+            .speed-slider::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                width: 16px;
+                height: 16px;
+                background: #007acc;
+                border-radius: 50%;
+                cursor: pointer;
+            }
+
+            .speed-value {
+                min-width: 40px;
+                text-align: right;
+                font-weight: bold;
+            }
+
+            /* Zoom Button Styles */
+            .zoom-buttons {
+                display: flex;
+                gap: 8px;
+                margin-top: 12px;
+            }
+
+            .zoom-btn {
+                flex: 1;
+                padding: 8px;
+                background: #3a3a3a;
+                color: #bbb;
+                border: 2px solid transparent;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 500;
+                transition: all 0.2s;
+            }
+
+            .zoom-btn:hover {
+                background: #4a4a4a;
+                color: #fff;
+            }
+
+            .zoom-btn.active {
+                border-color: #007acc;
+                background: #4a4a4a;
+                color: #fff;
+            }
+
+            .speed-rules {
+                max-height: 200px;
+                overflow-y: auto;
+                background: rgba(0, 0, 0, 0.2);
+                padding: 10px;
+                border-radius: 4px;
+                margin-bottom: 10px;
+            }
+
+            .rule-item {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 8px;
+                background: rgba(255, 255, 255, 0.05);
+                margin-bottom: 5px;
+                border-radius: 4px;
+            }
+
+            .rule-url {
+                flex: 1;
+                color: #4caf50;
+                font-size: 13px;
+                margin-right: 10px;
+            }
+
+            .rule-speed {
+                margin-right: 10px;
+                font-weight: bold;
+            }
+
+            .remove-btn {
+                background: #f44336;
+                color: white;
+                border: none;
+                padding: 2px 8px;
+                border-radius: 3px;
+                cursor: pointer;
+                font-size: 14px;
+            }
+
+            .remove-btn:hover {
+                background: #d32f2f;
+            }
+
+            .empty-state {
+                text-align: center;
+                color: #777;
+                padding: 20px;
+                font-style: italic;
+            }
+
+            .tabs {
+                display: flex;
+                background: rgba(0, 0, 0, 0.3);
+                padding: 5px;
+                gap: 5px;
+                margin-bottom: 10px;
+            }
+
+            .tab {
+                flex: 1;
+                padding: 10px;
+                background: rgba(255, 255, 255, 0.05);
+                border: none;
+                color: #aaa;
+                cursor: pointer;
+                border-radius: 4px;
+                transition: all 0.2s;
+                font-size: 14px;
+            }
+
+            .tab.active {
+                background: rgba(0, 122, 204, 0.3);
+                color: #fff;
+                font-weight: 500;
+            }
+
+            .tab-content {
+                display: none;
+            }
+
+            .tab-content.active {
+                display: block;
+            }
+
+            .global-speed {
+                background: rgba(0, 122, 204, 0.1);
+                padding: 10px;
+                border-radius: 4px;
+                margin-bottom: 10px;
+            }
+
+            .add-rule-form {
+                display: flex;
+                gap: 5px;
+                margin-top: 10px;
+            }
+
+            #newRuleUrl {
+                flex: 2;
+            }
+
+            #newRuleSpeed {
+                flex: 1;
+            }
+
+            /* Twitch Styles */
+            .channels-container {
+                margin-top: 15px;
+            }
+
+            .channels-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+                padding: 8px;
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 4px;
+            }
+
+            #liveCount {
+                color: #4caf50;
+                font-weight: bold;
+                font-size: 13px;
+            }
+
+            .channels-list {
+                max-height: 300px;
+                overflow-y: auto;
+                background: rgba(0, 0, 0, 0.2);
+                padding: 10px;
+                border-radius: 4px;
+            }
+
+            .channel-item {
+                display: flex;
+                align-items: center;
+                padding: 8px;
+                background: rgba(255, 255, 255, 0.05);
+                margin-bottom: 5px;
+                border-radius: 4px;
+                transition: all 0.2s;
+            }
+
+            .channel-item:hover {
+                background: rgba(255, 255, 255, 0.1);
+            }
+
+            .channel-name {
+                flex: 1;
+                margin-left: 10px;
+                font-size: 13px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .status-indicator {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: #555;
+                flex-shrink: 0;
+            }
+
+            .status-indicator.offline {
+                background: #555;
+            }
+
+            .status-indicator.online {
+                background: #4caf50;
+                animation: pulse 2s infinite;
+            }
+
+            .status-indicator.checking {
+                background: #ff9800;
+                animation: pulse 1s infinite;
+            }
+
+            @keyframes pulse {
+                0% {
+                    opacity: 1;
+                    transform: scale(1);
+                }
+                50% {
+                    opacity: 0.7;
+                    transform: scale(1.2);
+                }
+                100% {
+                    opacity: 1;
+                    transform: scale(1);
+                }
+            }
+
+            /* Login section */
+            .login-section {
+                padding: 15px;
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 4px;
+            }
+
+            .login-prompt {
+                margin-bottom: 15px;
+                font-size: 14px;
+                color: #aaa;
+            }
+
+            .user-info {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 10px;
+                background: rgba(0, 122, 204, 0.1);
+                border-radius: 4px;
+                margin-bottom: 10px;
+            }
+
+            .user-name {
+                font-weight: 500;
+                color: #4caf50;
+            }
+
+            .loading {
+                text-align: center;
+                padding: 20px;
+                color: #aaa;
+                font-style: italic;
+            }
+
+            .channel-item.live {
+                background: rgba(76, 175, 80, 0.1);
+                border-left: 3px solid #4caf50;
+            }
+
+            .viewer-count {
+                background: rgba(255, 0, 0, 0.8);
+                color: white;
+                padding: 2px 6px;
+                border-radius: 3px;
+                font-size: 11px;
+                margin-right: 8px;
+                font-weight: bold;
+            }
+
+            .game-name {
+                font-size: 11px;
+                color: #aaa;
+                margin-left: 8px;
+            }
+
+            .token-steps {
+                background: rgba(0, 0, 0, 0.3);
+                padding: 10px;
+                border-radius: 4px;
+                margin-bottom: 15px;
+                font-size: 12px;
+                line-height: 1.6;
+            }
+
+            .token-steps li {
+                margin-bottom: 8px;
+            }
+
+            .token-steps code {
+                background: rgba(0, 122, 204, 0.2);
+                padding: 2px 6px;
+                border-radius: 3px;
+                color: #4caf50;
+                font-family: monospace;
+            }
+
+            .token-steps a {
+                color: #007acc;
+                text-decoration: none;
+            }
+
+            .token-steps a:hover {
+                text-decoration: underline;
+            }
+
+            #tokenInput {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+
+            .token-fields {
+                margin-bottom: 15px;
+            }
+
+            .token-fields label {
+                display: block;
+                margin-bottom: 5px;
+                font-size: 12px;
+                color: #aaa;
+                margin-top: 10px;
+            }
+
+            .token-fields input {
+                width: 100%;
+                padding: 8px;
+                background: rgba(0, 0, 0, 0.3);
+                border: 1px solid #444;
+                color: #fff;
+                border-radius: 4px;
+                font-family: monospace;
+                font-size: 12px;
+            }
+
+            .token-fields input:focus {
+                outline: none;
+                border-color: #007acc;
+            }
+
+            .token-info {
+                background: rgba(0, 122, 204, 0.1);
+                padding: 10px;
+                border-radius: 4px;
+                margin-bottom: 15px;
+                border-left: 3px solid #007acc;
+            }
+
+            .token-info p {
+                margin: 5px 0;
+                font-size: 13px;
+            }
+
+            .small-text {
+                font-size: 11px;
+                color: #888;
+            }
+
+            .button-group {
+                display: flex;
+                gap: 10px;
+                margin-top: 15px;
+            }
+
+            .button-group .btn {
+                flex: 1;
+            }
+
+            /* Enhanced Rules Section Styles */
+            .saved-rules-section {
+                margin-top: 20px;
+                padding-top: 20px;
+                border-top: 1px solid #333;
+            }
+
+            .section-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 15px;
+                gap: 10px;
+            }
+
+            .section-header h4 {
+                margin: 0;
+                font-size: 14px;
+                color: #9ca3af;
+            }
+
+            .search-input {
+                flex: 1;
+                max-width: 180px;
+                padding: 6px 10px;
+                background: #1a1a1a;
+                border: 1px solid #333;
+                border-radius: 6px;
+                color: #fff;
+                font-size: 12px;
+            }
+
+            .search-input:focus {
+                border-color: #4a9eff;
+                outline: none;
+            }
+
+            .speed-rules.enhanced {
+                max-height: 200px;
+                overflow-y: auto;
+                background: #1a1a1a;
+                border-radius: 6px;
+                padding: 8px;
+                margin-bottom: 10px;
+            }
+
+            .speed-rules.enhanced::-webkit-scrollbar {
+                width: 6px;
+            }
+
+            .speed-rules.enhanced::-webkit-scrollbar-track {
+                background: #2a2a2a;
+                border-radius: 3px;
+            }
+
+            .speed-rules.enhanced::-webkit-scrollbar-thumb {
+                background: #4a4a4a;
+                border-radius: 3px;
+            }
+
+            /* Add Rule Controls */
+            .add-rule-controls {
+                margin-top: 10px;
+                padding: 10px;
+                background: #1a1a1a;
+                border-radius: 6px;
+            }
+
+            .input-row {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+            }
+
+            .pattern-input {
+                flex: 1;
+                padding: 6px 10px;
+                background: #222;
+                border: 1px solid #333;
+                border-radius: 4px;
+                color: #fff;
+                font-size: 12px;
+            }
+
+            .pattern-input.regex-mode {
+                font-family: monospace;
+            }
+
+            .speed-input-small {
+                width: 60px;
+                padding: 6px 8px;
+                background: #222;
+                border: 1px solid #333;
+                border-radius: 4px;
+                color: #fff;
+                font-size: 12px;
+            }
+
+            .rule-type-badge {
+                padding: 2px 6px;
+                background: #333;
+                border-radius: 3px;
+                font-size: 10px;
+                font-family: monospace;
+                color: #4a9eff;
+                margin-left: 8px;
+            }
+
+            /* Advanced Section Styles */
+            .advanced-section {
+                margin-top: 20px;
+                background: #1a1a1a;
+                border-radius: 8px;
+                overflow: hidden;
+            }
+
+            .advanced-header {
+                padding: 12px 15px;
+                background: #222;
+                color: #9ca3af;
+                font-size: 13px;
+                cursor: pointer;
+                user-select: none;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .advanced-header:hover {
+                background: #252525;
+            }
+
+            .advanced-header::marker {
+                content: "";
+            }
+
+            .advanced-content {
+                padding: 15px;
+            }
+
+            .advanced-subsection {
+                margin-bottom: 20px;
+            }
+
+            .advanced-subsection:last-child {
+                margin-bottom: 0;
+            }
+
+            .advanced-subsection h5 {
+                margin: 0 0 8px 0;
+                font-size: 12px;
+                color: #9ca3af;
+                font-weight: 500;
+            }
+
+            .help-text {
+                font-size: 11px;
+                color: #666;
+                margin-bottom: 10px;
+            }
+
+            .regex-rule-form {
+                display: flex;
+                gap: 8px;
+                margin-bottom: 10px;
+            }
+
+            .regex-input {
+                flex: 1;
+                padding: 6px 8px;
+                background: #222;
+                border: 1px solid #333;
+                border-radius: 4px;
+                color: #fff;
+                font-size: 12px;
+                font-family: monospace;
+            }
+
+            .speed-input.small {
+                width: 50px;
+            }
+
+            .regex-rules-list {
+                background: #222;
+                border-radius: 4px;
+                padding: 8px;
+                min-height: 40px;
+            }
+
+            .regex-rule-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 6px;
+                background: #1a1a1a;
+                border-radius: 4px;
+                margin-bottom: 6px;
+                font-size: 12px;
+            }
+
+            .regex-pattern {
+                font-family: monospace;
+                color: #4a9eff;
+                flex: 1;
+            }
+
+            .zoom-control-advanced {
+                display: flex;
+                gap: 10px;
+                align-items: center;
+            }
+
+            .zoom-control-advanced .speed-slider {
+                flex: 1;
+            }
+
+            .zoom-display {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .zoom-value {
+                min-width: 45px;
+                text-align: right;
+                color: #9ca3af;
+                font-size: 13px;
+            }
+
+            /* Improved rule item styles */
+            .rule-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 8px 10px;
+                background: #222;
+                border-radius: 6px;
+                margin-bottom: 6px;
+                transition: background 0.2s;
+            }
+
+            .rule-item:hover {
+                background: #2a2a2a;
+            }
+
+            .rule-item.filtered-out {
+                display: none;
+            }
+
+            .rule-url {
+                font-size: 12px;
+                color: #e2e8f0;
+                flex: 1;
+                font-weight: 500;
+            }
+
+            .rule-speed {
+                color: #4a9eff;
+                font-size: 12px;
+                margin: 0 10px;
+                font-weight: 600;
+            }
+
+            .remove-btn {
+                padding: 4px 8px;
+                font-size: 14px;
+                opacity: 0.7;
+                transition: opacity 0.2s;
+            }
+
+            .remove-btn:hover {
+                opacity: 1;
+                background: #ff4444;
+            }
+
+            /* Toggle Label Styles */
+            .toggle-label {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                cursor: pointer;
+                font-size: 13px;
+            }
+
+            .toggle-label input[type="checkbox"] {
+                width: 16px;
+                height: 16px;
+                cursor: pointer;
+                accent-color: #007acc;
+            }
+
+            .toggle-label span {
+                color: #e2e8f0;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <button id="openInWindow" title="In neuem Fenster öffnen">⧉</button>
+            <h2>🚀 WebTweaks</h2>
+
+            <div class="tabs">
+                <button class="tab active" data-tab="speed">
+                    🎬 Video Tweaks
+                </button>
+                <button class="tab" data-tab="twitch">🎮 Twitch</button>
+            </div>
+
+            <!-- Speed Tab -->
+            <div id="speedTab" class="tab-content active">
+                <div class="section">
+                    <h3>🎬 Video Tweaks</h3>
+
+                    <div class="current-site">
+                        <div class="site-info">
+                            <span>Aktive Regel:</span>
+                            <span
+                                id="activeRule"
+                                class="site-url"
+                                style="color: #4ade80; font-family: monospace"
+                                >default</span
+                            >
+                        </div>
+                        <div class="speed-control">
+                            <input
+                                type="range"
+                                id="currentSpeedSlider"
+                                class="speed-slider"
+                                min="0.25"
+                                max="3"
+                                step="0.01"
+                            />
+                            <span id="currentSpeedValue" class="speed-value"
+                                >-</span
+                            >
+                        </div>
+                        <div
+                            id="autoDetectIndicator"
+                            style="
+                                display: none;
+                                width: 100%;
+                                padding: 4px 8px;
+                                margin-bottom: 8px;
+                                background: #1a3d1a;
+                                border-radius: 4px;
+                                font-size: 11px;
+                                color: #4ade80;
+                                text-align: center;
+                            "
+                        >
+                            🎯 Auto-detected letterboxing
+                        </div>
+                        <div
+                            class="zoom-buttons"
+                            style="display: flex; gap: 6px; flex-wrap: wrap"
+                        >
+                            <button
+                                id="quickZoomReset"
+                                class="zoom-btn active"
+                                data-zoom="100"
+                                title="Original 16:9 - Volle Qualität mit schwarzen Balken"
+                                style="flex: 1; min-width: 60px"
+                            >
+                                16:9
+                            </button>
+                            <button
+                                id="quickZoom21Soft"
+                                class="zoom-btn"
+                                data-zoom="120"
+                                title="21:9 Soft - Leichter Zoom, weniger Crop"
+                                style="flex: 1; min-width: 60px"
+                            >
+                                21:9 Soft
+                            </button>
+                            <button
+                                id="quickZoom21"
+                                class="zoom-btn"
+                                data-zoom="131"
+                                title="21:9 - Exakter Ultrawide Crop"
+                                style="flex: 1; min-width: 60px"
+                            >
+                                21:9
+                            </button>
+                            <button
+                                id="quickZoom32Soft"
+                                class="zoom-btn"
+                                data-zoom="140"
+                                title="32:9 Soft - Moderater Zoom"
+                                style="flex: 1; min-width: 60px"
+                            >
+                                32:9 Soft
+                            </button>
+                            <button
+                                id="quickZoom32"
+                                class="zoom-btn"
+                                data-zoom="200"
+                                title="32:9 - Voller Super Ultrawide Crop"
+                                style="flex: 1; min-width: 60px"
+                            >
+                                32:9
+                            </button>
+                        </div>
+                        <div style="margin-top: 10px">
+                            <div style="font-size: 13px; margin-bottom: 8px">
+                                <span>Vertikale Position:</span>
+                            </div>
+                            <div class="speed-control">
+                                <input
+                                    type="range"
+                                    id="zoomPosition"
+                                    class="speed-slider"
+                                    min="0"
+                                    max="100"
+                                    value="50"
+                                    step="5"
+                                    title="0% = Oben, 50% = Mitte, 100% = Unten"
+                                />
+                                <span id="zoomPositionValue" class="speed-value"
+                                    >50%</span
+                                >
+                            </div>
+                        </div>
+                        <button id="saveCurrentSpeed" class="btn btn-primary">
+                            Für diese Seite speichern
+                        </button>
+                        <button
+                            id="openPiP"
+                            class="btn btn-primary"
+                            style="margin-top: 10px"
+                        >
+                            📺 Open in Picture-in-Picture
+                        </button>
+                    </div>
+
+                    <!-- Saved Rules Section -->
+                    <div class="saved-rules-section">
+                        <div class="section-header">
+                            <h4>📋 Saved Rules</h4>
+                            <input
+                                type="text"
+                                id="searchRules"
+                                placeholder="🔍 Search rules..."
+                                class="search-input"
+                            />
+                        </div>
+
+                        <div id="speedRules" class="speed-rules enhanced">
+                            <div class="empty-state">No saved rules</div>
+                        </div>
+
+                        <!-- Default Speed Setting -->
+                        <div
+                            class="global-speed"
+                            style="
+                                margin-top: 12px;
+                                padding: 10px;
+                                background: #1a1a1a;
+                                border-radius: 6px;
+                            "
+                        >
+                            <div class="site-info" style="margin-bottom: 8px">
+                                <span style="font-size: 12px; color: #888"
+                                    >Standard-Geschwindigkeit:</span
+                                >
+                                <span
+                                    id="globalSpeedValue"
+                                    style="color: #4a9eff; font-weight: 500"
+                                    >1.5x</span
+                                >
+                            </div>
+                            <div
+                                style="
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 10px;
+                                "
+                            >
+                                <input
+                                    type="range"
+                                    id="globalSpeedSlider"
+                                    min="0.25"
+                                    max="3"
+                                    step="0.01"
+                                    value="1.5"
+                                    class="speed-slider"
+                                    style="flex: 1"
+                                />
+                            </div>
+                        </div>
+
+                        <!-- Add Rule Form -->
+                        <div class="add-rule-controls">
+                            <div class="input-row">
+                                <input
+                                    type="text"
+                                    id="newPattern"
+                                    placeholder="(e.g. youtube.com or .*\.netflix\..*)"
+                                    class="pattern-input"
+                                />
+                                <input
+                                    type="number"
+                                    id="newSpeed"
+                                    placeholder="1.5"
+                                    min="0.25"
+                                    max="3"
+                                    step="0.01"
+                                    class="speed-input-small"
+                                />
+                                <button
+                                    id="addRuleBtn"
+                                    class="btn btn-primary"
+                                    title="Add Rule"
+                                    style="
+                                        padding: 5px 16px;
+                                        margin: 0;
+                                        border: 1px solid #333;
+                                        background: #222;
+                                    "
+                                >
+                                    Add
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Advanced Section -->
+                    <details class="advanced-section">
+                        <summary class="advanced-header">
+                            ⚙️ Advanced Settings
+                        </summary>
+
+                        <div class="advanced-content">
+                            <!-- Custom Video Zoom -->
+                            <div class="advanced-subsection">
+                                <h5>🔍 Custom Video Zoom</h5>
+                                <p class="help-text">
+                                    Zoom videos beyond standard aspect ratios
+                                </p>
+                                <div class="zoom-control-advanced">
+                                    <input
+                                        type="range"
+                                        id="customZoom"
+                                        min="100"
+                                        max="200"
+                                        value="100"
+                                        step="5"
+                                        class="speed-slider"
+                                    />
+                                    <div class="zoom-display">
+                                        <span
+                                            id="customZoomValue"
+                                            class="zoom-value"
+                                            >100%</span
+                                        >
+                                        <button
+                                            id="applyCustomZoom"
+                                            class="btn btn-small"
+                                        >
+                                            Apply
+                                        </button>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 12px">
+                                    <button
+                                        id="detectLetterbox"
+                                        class="btn btn-small btn-primary"
+                                        style="width: 100%; padding: 8px"
+                                    >
+                                        🎯 Auto-Detect Letterbox
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Netflix Section -->
+                    <details class="advanced-section">
+                        <summary class="advanced-header">🎬 Netflix</summary>
+
+                        <div class="advanced-content">
+                            <div class="advanced-subsection">
+                                <label class="toggle-label">
+                                    <input
+                                        type="checkbox"
+                                        id="netflixAutoSkip"
+                                        checked
+                                    />
+                                    <span>Auto-Skip Intro & Recap</span>
+                                </label>
+                                <p class="help-text">
+                                    Klickt automatisch auf "Intro überspringen"
+                                    und "Nächste Folge"
+                                </p>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            </div>
+
+            <!-- Twitch Tab -->
+            <div id="twitchTab" class="tab-content">
+                <div class="section">
+                    <h3>🎮 Twitch Live Tracker</h3>
+
+                    <div id="loginSection" class="login-section">
+                        <p class="login-prompt">Twitch Token Konfiguration</p>
+                        <div class="token-info">
+                            <p>
+                                Generiere deinen Token auf
+                                <a
+                                    href="https://twitchtokengenerator.com/"
+                                    target="_blank"
+                                    >twitchtokengenerator.com</a
+                                >
+                            </p>
+                            <p class="small-text">
+                                Wähle "Custom Scope Token" und aktiviere
+                                <code>user:read:follows</code>
+                            </p>
+                        </div>
+
+                        <div class="token-fields">
+                            <label for="accessTokenInput">Access Token:</label>
+                            <input
+                                type="password"
+                                id="accessTokenInput"
+                                placeholder="Dein Access Token"
+                            />
+
+                            <label for="refreshTokenInput"
+                                >Refresh Token (optional):</label
+                            >
+                            <input
+                                type="password"
+                                id="refreshTokenInput"
+                                placeholder="Dein Refresh Token (optional)"
+                            />
+
+                            <label for="clientIdInput">Client ID:</label>
+                            <input
+                                type="text"
+                                id="clientIdInput"
+                                placeholder="Deine Client ID"
+                            />
+                        </div>
+
+                        <button id="loginButton" class="btn btn-primary">
+                            Verbinden
+                        </button>
+                    </div>
+
+                    <div id="userSection" style="display: none">
+                        <div class="user-info">
+                            <span id="userName">Lade...</span>
+                            <button id="logoutButton" class="btn btn-small">
+                                Abmelden
+                            </button>
+                        </div>
+
+                        <div class="channels-container">
+                            <div class="channels-header">
+                                <span id="liveCount">0 Live</span>
+                                <button
+                                    id="refreshButton"
+                                    class="btn btn-small"
+                                >
+                                    Aktualisieren
+                                </button>
+                            </div>
+
+                            <div class="channels-list" id="channelsList">
+                                <div class="loading">Lade Kanäle...</div>
+                            </div>
+
+                            <div class="button-group" style="margin-top: 10px">
+                                <button
+                                    id="openLiveStreams"
+                                    class="btn btn-primary"
+                                >
+                                    Alle Live in Tabs öffnen
+                                </button>
+                                <button
+                                    id="openLiveStreamsSeparate"
+                                    class="btn btn-primary"
+                                >
+                                    Als Grid öffnen
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="shared/speed-rules-matcher.js"></script>
+        <script src="popup.js"></script>
+    </body>
+</html>

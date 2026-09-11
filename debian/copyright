@@ -1,0 +1,12 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: xi-extensions
+Source: https://github.com/xi72yow/xi-extensions
+
+Files: *
+Copyright: 2026 xi72yow <65042627+xi72yow@users.noreply.github.com>
+License: proprietary
+ All rights reserved.
+ .
+ No licence is granted. The source is published for inspection and for use on
+ the author's own systems. Copying, modification and redistribution outside of
+ that are not permitted without prior written permission.

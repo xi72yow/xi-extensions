@@ -1,0 +1,110 @@
+/* colours, focus rings and accent handling come from the shell classes the
+   widgets carry, so only layout is defined here */
+
+/* the width itself is set in pickerWidth(), computed from the card metrics.
+   this only lifts the 28em cap the shell theme puts on a dialog, which would
+   otherwise clip the second column */
+.xiws-dialog .modal-dialog-content-box {
+  max-width: 100em;
+  spacing: 6px;
+}
+
+.xiws-search {
+  width: auto;
+  margin: 0;
+}
+
+.xiws-list {
+  max-height: 40em;
+}
+
+.xiws-heading {
+  font-weight: 700;
+  padding: 12px 6px 2px 6px;
+}
+
+.xiws-row {
+  padding: 6px;
+}
+
+.xiws-grid-row {
+  spacing: 12px;
+}
+
+.xiws-session-box {
+  spacing: 8px;
+}
+
+.xiws-card-close {
+  margin: 6px;
+}
+
+.xiws-thumb {
+  border-radius: 6px;
+}
+
+.xiws-detail .modal-dialog-content-box {
+  width: 76em;
+  max-width: 76em;
+  spacing: 12px;
+}
+
+.xiws-detail-header {
+  spacing: 2px;
+  padding: 0 6px 6px 6px;
+}
+
+.xiws-detail-title {
+  font-weight: 700;
+  font-size: 1.364em;
+}
+
+.xiws-detail-scroll {
+  max-height: 34em;
+}
+
+.xiws-detail-grid {
+  spacing: 12px;
+}
+
+.xiws-card {
+  padding: 8px;
+}
+
+.xiws-preview {
+  border-radius: 6px;
+}
+
+/* fill and border come from tile-preview, the class the shell uses for its
+   own snap indicator, so this follows the accent colour */
+.xiws-snap-preview {
+  border-radius: 12px;
+}
+
+/* the buttons expand into equal slots, the spacing only guarantees a minimum
+   gap when the bar is narrow */
+.xiws-preset-bar {
+  spacing: 6px;
+  padding: 10px 6px 2px 6px;
+}
+
+.xiws-preset {
+  padding: 6px;
+  border-radius: 8px;
+}
+
+.xiws-preset:hover,
+.xiws-preset:focus {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* the border eats into the padding so the icon does not shift on selection */
+.xiws-preset:checked {
+  border: 2px solid -st-accent-color;
+  padding: 4px;
+}
+
+.xiws-preset-tile {
+  border-radius: 2px;
+  background-color: rgba(255, 255, 255, 0.35);
+}

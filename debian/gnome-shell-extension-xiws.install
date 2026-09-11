@@ -1,0 +1,5 @@
+gnome/xiws@xi72yow/metadata.json   usr/share/gnome-shell/extensions/xiws@xi72yow/
+gnome/xiws@xi72yow/extension.js    usr/share/gnome-shell/extensions/xiws@xi72yow/
+gnome/xiws@xi72yow/stylesheet.css  usr/share/gnome-shell/extensions/xiws@xi72yow/
+gnome/xiws@xi72yow/lib/*.js        usr/share/gnome-shell/extensions/xiws@xi72yow/lib/
+gnome/xiws@xi72yow/schemas/org.gnome.shell.extensions.xiws.gschema.xml usr/share/glib-2.0/schemas/
