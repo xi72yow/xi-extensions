@@ -23,6 +23,20 @@
   padding: 12px 6px 2px 6px;
 }
 
+.xiws-heading-row {
+  padding-right: 6px;
+}
+
+.xiws-heading-action {
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.xiws-heading-action:hover,
+.xiws-heading-action:focus {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
 .xiws-row {
   padding: 6px;
 }

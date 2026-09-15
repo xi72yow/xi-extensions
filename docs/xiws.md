@@ -77,6 +77,12 @@ Sessions can be closed from the picker, either through the button on the row or 
 
 Closing then moves on to the next open session, the way closing a tab moves to the next one: the first session above the closed index, wrapping to the lowest one, and falling back to the reserved workspace when none is left. Without that the emptied workspace would stay active.
 
+The heading of the session section carries a "close all" action that applies the same treatment to every open session at once and then activates the reserved workspace. It sits on the heading rather than in the row order, so keyboard navigation still steps through sessions only.
+
+**A reserved workspace cannot be empty under dynamic workspaces.** Mutter keeps exactly one empty workspace and places it at the end, so an empty one before it is removed as soon as it is left. With the reserved workspace clean, opening a session therefore appended a workspace, activated it, and the now empty first one was reclaimed, moving the session down onto index 0. The picker then showed the session and the reserved workspace as the same thing, since the reserved one is resolved through `first-workspace-index` rather than through an object.
+
+Keeping index 0 reserved at all times means turning off `dynamic-workspaces` and setting a fixed `num-workspaces`. That is a decision about the desktop rather than about this extension, so the extension does not change it by itself.
+
 The git client is exempt from being closed. Being a single shared instance, closing it would remove it from every other session as well. It is moved to the workspace below the session range instead, which is the one reserved for personal use. Switching to a session also arms window claiming for a moment, because the git client may have been shut down in the meantime and then starts cold, leaving no window to move at that point.
 
 **The reserved workspace carries a browser window like any other.** It is opened under the sentinel name `__home__`, the same key its arrangement is stored under, so its tabs are persisted and restored through the Chrome extension rather than being left to the browser.

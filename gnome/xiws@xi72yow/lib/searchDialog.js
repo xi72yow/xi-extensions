@@ -75,11 +75,36 @@ export const SearchDialog = GObject.registerClass(
       this._gridRow = null
     }
 
-    addHeading(text) {
+    // an action sits on the baseline of the heading it belongs to, which keeps
+    // it out of the row order and therefore out of keyboard navigation
+    addHeading(text, action = null) {
       this._gridRow = null
-      this._rowBox.add_child(
-        new St.Label({ text, style_class: 'list-search-result-description xiws-heading' }),
-      )
+
+      const label = new St.Label({
+        text,
+        style_class: 'list-search-result-description xiws-heading',
+        x_expand: true,
+        y_align: Clutter.ActorAlign.CENTER,
+      })
+
+      if (!action) {
+        this._rowBox.add_child(label)
+        return
+      }
+
+      const row = new St.BoxLayout({ x_expand: true, style_class: 'xiws-heading-row' })
+      row.add_child(label)
+
+      const button = new St.Button({
+        style_class: 'xiws-heading-action',
+        label: action.label,
+        can_focus: true,
+        y_align: Clutter.ActorAlign.CENTER,
+      })
+      button.connect('clicked', action.onActivate)
+      row.add_child(button)
+
+      this._rowBox.add_child(row)
     }
 
     addRow(row, onActivate, { columns = 1 } = {}) {

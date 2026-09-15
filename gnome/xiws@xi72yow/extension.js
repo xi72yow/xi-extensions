@@ -929,6 +929,39 @@ const WorkspacePicker = GObject.registerClass(
       this.render()
     }
 
+    // closing every session at once, which is also the way back to a clean
+    // reserved workspace: under dynamic workspaces it only stays the first one
+    // as long as nothing else is open
+    _closeAllSessions() {
+      const sessions = this._liveSessions()
+      if (sessions.length === 0) return
+
+      this._captureSessions({ replace: true })
+
+      const gitId = this._settings.get_string('git-desktop-id')
+      const tracker = Shell.WindowTracker.get_default()
+      const time = global.get_current_time()
+      const parkIndex = this._homeIndex()
+
+      for (const session of sessions) {
+        for (const window of visibleWindows(session.workspace)) {
+          const app = tracker.get_window_app(window)
+
+          if (app && app.get_id() === gitId) {
+            window.change_workspace_by_index(parkIndex, false)
+            continue
+          }
+
+          window.delete(time)
+        }
+
+        this._sessions.delete(session.name)
+      }
+
+      this._homeWorkspace()?.activate(time)
+      this.render()
+    }
+
     _homeIndex() {
       return Math.max(this._settings.get_int('first-workspace-index') - 1, 0)
     }
@@ -1037,7 +1070,12 @@ const WorkspacePicker = GObject.registerClass(
       const sessions = this._liveSessions().filter((session) => !needle || matches(session.name))
 
       if (showHome || sessions.length > 0) {
-        this.addHeading('Offene Sessions')
+        this.addHeading(
+          'Offene Sessions',
+          sessions.length > 0
+            ? { label: 'Alle schließen', onActivate: () => this._closeAllSessions() }
+            : null,
+        )
 
         if (showHome) {
           const row = new SessionRow(home, { closable: false })
