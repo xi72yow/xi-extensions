@@ -13,11 +13,6 @@ Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async')
 
 const BRIGHTNESS_VCP = '10'
 const ICON_NAME = 'display-brightness-symbolic'
-// monitors may store every ddc/ci write in memory with limited write cycles,
-// so a glide is kept short: each write covers half the remaining distance,
-// and the last couple of steps, too small to see gliding, go in one write
-const EASE_DIVISOR = 2
-const DIRECT_STEPS = 2
 // irradiance is perceived roughly logarithmically, the scale sets where the
 // curve bends and full is treated as bright daylight
 const RADIATION_SCALE = 50
@@ -66,16 +61,16 @@ function parseLevel(output) {
   return { current, max }
 }
 
-// a ddc/ci write takes around 0.2 s, so the monitors are led towards a target
-// one write after another instead of being set directly. a target changing
-// midway simply redirects the running glide.
+// monitors may store every ddc/ci write in memory with limited write cycles,
+// so each change is a single write straight to the target. targets arriving
+// while a write is under way collapse into the next one.
 class DisplayBrightness {
   constructor() {
     this._cancellable = new Gio.Cancellable()
     this._displays = []
     this._loading = null
     this._fraction = null
-    this._gliding = false
+    this._writing = false
 
     this._monitorsChangedId = Main.layoutManager.connect('monitors-changed', () => this._forget())
   }
@@ -91,9 +86,9 @@ class DisplayBrightness {
     return first ? first.written / first.max : null
   }
 
-  glideTo(fraction) {
+  moveTo(fraction) {
     this._fraction = fraction
-    this._glide()
+    this._flush()
   }
 
   // a detection overtaken by a monitor change must not install its result
@@ -135,9 +130,9 @@ class DisplayBrightness {
     this._loading = null
   }
 
-  async _glide() {
-    if (this._gliding) return
-    this._gliding = true
+  async _flush() {
+    if (this._writing) return
+    this._writing = true
 
     try {
       let moved = true
@@ -145,18 +140,14 @@ class DisplayBrightness {
         moved = false
 
         for (const display of await this._load()) {
-          const distance = Math.round(this._fraction * display.max) - display.written
-          if (distance === 0) continue
+          const target = Math.round(this._fraction * display.max)
+          if (target === display.written) continue
 
-          const next =
-            Math.abs(distance) <= DIRECT_STEPS
-              ? display.written + distance
-              : display.written + Math.sign(distance) * Math.ceil(Math.abs(distance) / EASE_DIVISOR)
           await ddcutil(
-            ['--bus', display.bus, 'setvcp', BRIGHTNESS_VCP, String(next)],
+            ['--bus', display.bus, 'setvcp', BRIGHTNESS_VCP, String(target)],
             this._cancellable,
           )
-          display.written = next
+          display.written = target
           moved = true
         }
       }
@@ -166,7 +157,7 @@ class DisplayBrightness {
       // a monitor in standby does not answer, its level is read afresh next time
       this._forget()
     } finally {
-      this._gliding = false
+      this._writing = false
     }
   }
 }
@@ -295,7 +286,7 @@ export class BrightnessController extends Signals.EventEmitter {
       // the weather data holds the brightness where it is instead of jumping
       this._manual = target
 
-      this._displays.glideTo(target / 100)
+      this._displays.moveTo(target / 100)
     }
 
     // emitted either way, the menu shows the irradiance as it moves
