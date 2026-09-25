@@ -13,11 +13,22 @@ import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js'
 
 import { ResultRow, SearchDialog } from './lib/searchDialog.js'
 import { ClipboardHistory, ClipboardPicker } from './lib/clipboard.js'
+import { BrightnessController, BrightnessIndicator } from './lib/brightness.js'
 
 const TOGGLE_PICKER = 'toggle-picker'
 const OPEN_BROWSER = 'open-browser'
 const OPEN_GIT = 'open-git'
 const TOGGLE_CLIPBOARD = 'toggle-clipboard'
+const BRIGHTNESS_UP = 'brightness-up'
+const BRIGHTNESS_DOWN = 'brightness-down'
+const KEYBINDINGS = [
+  TOGGLE_PICKER,
+  OPEN_BROWSER,
+  OPEN_GIT,
+  TOGGLE_CLIPBOARD,
+  BRIGHTNESS_UP,
+  BRIGHTNESS_DOWN,
+]
 // the reserved workspace is stored alongside the projects, under a name no
 // repository can carry
 const HOME_KEY = '__home__'
@@ -1455,6 +1466,13 @@ export default class XiwsExtension extends Extension {
     this._clipboard = new ClipboardHistory(this._settings)
     this._clipboardPicker = new ClipboardPicker(this._clipboard)
     this._bind(TOGGLE_CLIPBOARD, () => this._clipboardPicker.toggle())
+
+    this._brightness = new BrightnessController(this._settings)
+    this._brightnessIndicator = new BrightnessIndicator(this._brightness, this._settings)
+    // sliders span both columns of the quick settings grid
+    Main.panel.statusArea.quickSettings.addExternalIndicator(this._brightnessIndicator, 2)
+    this._bind(BRIGHTNESS_UP, () => this._brightness.step(1))
+    this._bind(BRIGHTNESS_DOWN, () => this._brightness.step(-1))
   }
 
   _bind(name, callback) {
@@ -1476,9 +1494,12 @@ export default class XiwsExtension extends Extension {
       this._switchHandlerId = 0
     }
 
-    for (const name of [TOGGLE_PICKER, OPEN_BROWSER, OPEN_GIT, TOGGLE_CLIPBOARD]) {
-      Main.wm.removeKeybinding(name)
-    }
+    for (const name of KEYBINDINGS) Main.wm.removeKeybinding(name)
+
+    this._brightnessIndicator?.destroy()
+    this._brightnessIndicator = null
+    this._brightness?.destroy()
+    this._brightness = null
 
     this._clipboardPicker?.destroy()
     this._clipboardPicker = null

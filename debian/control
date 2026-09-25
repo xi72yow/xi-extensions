@@ -14,6 +14,7 @@ Architecture: all
 Depends: ${misc:Depends},
          gnome-shell (>= 48~),
          gnome-shell (<< 49~)
+Recommends: ddcutil
 Description: dev workspaces for GNOME Shell
  Opens and switches project sessions from a searchable picker in the panel.
  A workspace bundles a project directory with the applications belonging to

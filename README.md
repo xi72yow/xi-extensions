@@ -19,12 +19,13 @@ Containerfile           build and lint environment used by CI
 
 ## Extensions
 
-| Extension   | Platform    | State                                      | Concept                                |
-| ----------- | ----------- | ------------------------------------------ | -------------------------------------- |
-| `xiws`      | GNOME Shell | sessions, snapping and presets implemented | [docs/xiws.md](docs/xiws.md)           |
-| `xiws`      | Chrome      | implemented and verified                   | [docs/xiws.md](docs/xiws.md)           |
-| `webtweaks` | Chrome      | imported, rework pending                   |                                        |
-| clipboard   | GNOME Shell | minimal core implemented                   | [docs/clipboard.md](docs/clipboard.md) |
+| Extension   | Platform    | State                                      | Concept                                  |
+| ----------- | ----------- | ------------------------------------------ | ---------------------------------------- |
+| `xiws`      | GNOME Shell | sessions, snapping and presets implemented | [docs/xiws.md](docs/xiws.md)             |
+| `xiws`      | Chrome      | implemented and verified                   | [docs/xiws.md](docs/xiws.md)             |
+| `webtweaks` | Chrome      | imported, rework pending                   |                                          |
+| clipboard   | GNOME Shell | minimal core implemented                   | [docs/clipboard.md](docs/clipboard.md)   |
+| brightness  | GNOME Shell | ddc/ci glide, slider and daylight curve    | [docs/brightness.md](docs/brightness.md) |
 
 The two Chrome extensions are deliberately kept apart. `webtweaks` carries `identity`, `webRequest` and content scripts on `<all_urls>`, while `chrome/xiws` gets by with `tabs` and `storage`. Merging them would pull the smaller extension into a considerably broader permission scope. On top of that their lifecycles differ, since `webtweaks` follows the DOM of third party sites.
 

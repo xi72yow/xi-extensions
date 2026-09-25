@@ -45,6 +45,45 @@
       <summary>Skip entries marked by a password manager</summary>
       <description>Managers announce them through the x-kde-passwordManagerHint mime type. Sources that do not set it, such as browsers and terminals, are not covered by this.</description>
     </key>
+    <key name="brightness-up" type="as">
+      <default><![CDATA[['<Super>F6']]]></default>
+      <summary>Raise the brightness of every ddc/ci capable monitor</summary>
+    </key>
+    <key name="brightness-down" type="as">
+      <default><![CDATA[['<Super>F5']]]></default>
+      <summary>Lower the brightness of every ddc/ci capable monitor</summary>
+    </key>
+    <key name="brightness-step" type="i">
+      <range min="1" max="100"/>
+      <default>10</default>
+      <summary>Brightness change per key press, in percent of the monitor range</summary>
+      <description>Monitors report their own maximum through ddc/ci, which is not always 100, so the step is scaled to it.</description>
+    </key>
+    <key name="brightness-auto" type="b">
+      <default>false</default>
+      <summary>Follow the daylight curve instead of a fixed level</summary>
+    </key>
+    <key name="brightness-location" type="s">
+      <default>''</default>
+      <summary>Latitude and longitude for the daylight curve, as "lat,lon"</summary>
+      <description>Sent to open-meteo.com rounded to two decimals, about a kilometre. Without a location the automatic mode holds the current level.</description>
+    </key>
+    <key name="brightness-auto-min" type="i">
+      <range min="0" max="100"/>
+      <default>20</default>
+      <summary>Brightness in percent at night and without daylight</summary>
+    </key>
+    <key name="brightness-auto-max" type="i">
+      <range min="0" max="100"/>
+      <default>100</default>
+      <summary>Brightness in percent in full daylight</summary>
+    </key>
+    <key name="brightness-offset" type="i">
+      <range min="-100" max="100"/>
+      <default>0</default>
+      <summary>Shift applied on top of the daylight curve, in percent</summary>
+      <description>Set through the keys and the slider while the automatic mode is on, so a manual correction carries through the day.</description>
+    </key>
     <key name="search-depth" type="i">
       <default>3</default>
       <summary>How many directory levels below a search path are scanned</summary>
