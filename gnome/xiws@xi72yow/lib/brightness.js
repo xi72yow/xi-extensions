@@ -13,14 +13,19 @@ Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async')
 
 const BRIGHTNESS_VCP = '10'
 const ICON_NAME = 'display-brightness-symbolic'
-// each write covers a third of the remaining distance, so a glide starts
-// quick and settles softly on the monitor's coarse ddc/ci steps
-const EASE_DIVISOR = 3
+// monitors may store every ddc/ci write in memory with limited write cycles,
+// so a glide is kept short: each write covers half the remaining distance,
+// and the last couple of steps, too small to see gliding, go in one write
+const EASE_DIVISOR = 2
+const DIRECT_STEPS = 2
 // irradiance is perceived roughly logarithmically, the scale sets where the
 // curve bends and full is treated as bright daylight
 const RADIATION_SCALE = 50
 const RADIATION_FULL = 800
 const CURVE_TICK_SECONDS = 60
+// the curve drifts by fractions every minute, following each of them would
+// wear the settings memory of the monitor for changes nobody notices
+const CURVE_HYSTERESIS_PERCENT = 4
 const PERSIST_DELAY_MS = 500
 
 function isCancelled(error) {
@@ -144,7 +149,9 @@ class DisplayBrightness {
           if (distance === 0) continue
 
           const next =
-            display.written + Math.sign(distance) * Math.ceil(Math.abs(distance) / EASE_DIVISOR)
+            Math.abs(distance) <= DIRECT_STEPS
+              ? display.written + distance
+              : display.written + Math.sign(distance) * Math.ceil(Math.abs(distance) / EASE_DIVISOR)
           await ddcutil(
             ['--bus', display.bus, 'setvcp', BRIGHTNESS_VCP, String(next)],
             this._cancellable,
@@ -178,14 +185,20 @@ export class BrightnessController extends Signals.EventEmitter {
     this._offset = settings.get_int('brightness-offset')
     this._persistId = 0
 
-    this._skyChangedId = this._sky.connect('changed', () => this._apply())
+    this._skyChangedId = this._sky.connect('changed', () => this._apply({ settle: true }))
     this._settingsIds = [
       'changed::brightness-auto',
       'changed::brightness-auto-min',
       'changed::brightness-auto-max',
     ].map((signal) => settings.connect(signal, () => this._apply()))
+    this._settingsIds.push(
+      settings.connect('changed::brightness-offset', () => {
+        this._offset = settings.get_int('brightness-offset')
+        this._apply()
+      }),
+    )
     this._tickId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, CURVE_TICK_SECONDS, () => {
-      this._apply()
+      this._apply({ settle: true })
       return GLib.SOURCE_CONTINUE
     })
 
@@ -267,17 +280,25 @@ export class BrightnessController extends Signals.EventEmitter {
     return min + (max - min) * share
   }
 
-  _apply() {
+  // settling applies the hysteresis, anything the user did is followed exactly
+  _apply({ settle = false } = {}) {
     if (this._manual === null) return
 
     const curve = this.auto ? this._curve() : null
-    this._target = curve === null ? this._manual : clampPercent(curve + this._offset)
+    const target = curve === null ? this._manual : clampPercent(curve + this._offset)
+    const settled = settle && Math.abs(target - this._target) < CURVE_HYSTERESIS_PERCENT
 
-    // the manual level follows every target, so switching modes or losing
-    // the weather data holds the brightness where it is instead of jumping
-    this._manual = this._target
+    if (!settled) {
+      this._target = target
 
-    this._displays.glideTo(this._target / 100)
+      // the manual level follows every target, so switching modes or losing
+      // the weather data holds the brightness where it is instead of jumping
+      this._manual = target
+
+      this._displays.glideTo(target / 100)
+    }
+
+    // emitted either way, the menu shows the irradiance as it moves
     this.emit('changed')
   }
 
