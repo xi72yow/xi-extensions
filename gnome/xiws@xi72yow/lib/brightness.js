@@ -70,6 +70,7 @@ class DisplayBrightness {
     this._displays = []
     this._loading = null
     this._fraction = null
+    this._cause = null
     this._writing = false
 
     this._monitorsChangedId = Main.layoutManager.connect('monitors-changed', () => this._forget())
@@ -86,8 +87,9 @@ class DisplayBrightness {
     return first ? first.written / first.max : null
   }
 
-  moveTo(fraction) {
+  moveTo(fraction, cause) {
     this._fraction = fraction
+    this._cause = cause
     this._flush()
   }
 
@@ -147,6 +149,11 @@ class DisplayBrightness {
             ['--bus', display.bus, 'setvcp', BRIGHTNESS_VCP, String(target)],
             this._cancellable,
           )
+          // one line per write, so the journal tells how often the monitor
+          // is actually written to
+          console.log(
+            `xiws: brightness ${display.written} -> ${target} of ${display.max} (${this._cause})`,
+          )
           display.written = target
           moved = true
         }
@@ -176,7 +183,9 @@ export class BrightnessController extends Signals.EventEmitter {
     this._offset = settings.get_int('brightness-offset')
     this._persistId = 0
 
-    this._skyChangedId = this._sky.connect('changed', () => this._apply({ settle: true }))
+    this._skyChangedId = this._sky.connect('changed', () =>
+      this._apply({ settle: true, cause: 'weather' }),
+    )
     this._settingsIds = [
       'changed::brightness-auto',
       'changed::brightness-auto-min',
@@ -189,7 +198,7 @@ export class BrightnessController extends Signals.EventEmitter {
       }),
     )
     this._tickId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, CURVE_TICK_SECONDS, () => {
-      this._apply({ settle: true })
+      this._apply({ settle: true, cause: 'drift' })
       return GLib.SOURCE_CONTINUE
     })
 
@@ -221,7 +230,7 @@ export class BrightnessController extends Signals.EventEmitter {
     return this._sky.hasLocation
   }
 
-  set(percent) {
+  set(percent, cause = 'slider') {
     if (this._target === null) return
 
     const curve = this.auto ? this._curve() : null
@@ -232,13 +241,13 @@ export class BrightnessController extends Signals.EventEmitter {
       this._manual = clampPercent(percent)
     }
 
-    this._apply()
+    this._apply({ cause })
   }
 
   step(direction) {
     if (this._target === null) return
 
-    this.set(this._target + direction * this._settings.get_int('brightness-step'))
+    this.set(this._target + direction * this._settings.get_int('brightness-step'), 'key')
     Main.osdWindowManager.show(
       -1,
       new Gio.ThemedIcon({ name: ICON_NAME }),
@@ -255,7 +264,7 @@ export class BrightnessController extends Signals.EventEmitter {
     if (level === null) return
 
     this._manual = clampPercent(level * 100)
-    this._apply()
+    this._apply({ cause: 'start' })
   }
 
   _curve() {
@@ -272,10 +281,11 @@ export class BrightnessController extends Signals.EventEmitter {
   }
 
   // settling applies the hysteresis, anything the user did is followed exactly
-  _apply({ settle = false } = {}) {
+  _apply({ settle = false, cause = 'settings' } = {}) {
     if (this._manual === null) return
 
     const curve = this.auto ? this._curve() : null
+    if (curve !== null) cause += `, curve ${Math.round(this._sky.radiationNow())} W/m²`
     const target = curve === null ? this._manual : clampPercent(curve + this._offset)
     const settled = settle && Math.abs(target - this._target) < CURVE_HYSTERESIS_PERCENT
 
@@ -286,7 +296,7 @@ export class BrightnessController extends Signals.EventEmitter {
       // the weather data holds the brightness where it is instead of jumping
       this._manual = target
 
-      this._displays.moveTo(target / 100)
+      this._displays.moveTo(target / 100, cause)
     }
 
     // emitted either way, the menu shows the irradiance as it moves
