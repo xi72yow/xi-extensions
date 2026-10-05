@@ -25,6 +25,16 @@ The whole list travels as a single secret holding JSON rather than one secret pe
 | Favourites | one `Secret` item under the schema `dev.xi72yow.xiws.Clipboard`                        |
 | Pasting    | writes back through `St.Clipboard.set_text`                                            |
 
+## Images
+
+Copied images are kept as well, which only became reasonable once the history stopped being written to disk. The bytes are not held in the shell process either: they are spooled into `$XDG_RUNTIME_DIR/xiws/clipboard/`, a tmpfs owned by the user and taken down with the session, and the entry carries the path and the mimetype. A screenshot on a wide display runs into megabytes, and keeping a few of those in the compositor heap is not worth it when the texture cache can load a scaled thumbnail from a file instead.
+
+The spooled file is removed when its entry leaves the history, through the size cap, a delete or the extension being disabled. Without that it would survive until logout, since nothing else clears the runtime directory in between.
+
+**An image is taken only when nothing textual is on offer.** Rich text announces `text/plain` beside its markup, while a copied image announces `image/*` alone, so that distinction keeps ordinary copies out of the spool.
+
+Images cannot be marked as favourites. The keyring holds small secrets, not blobs, and a base64 screenshot would be rewritten into the single favourites secret on every change.
+
 ## Ordering
 
 A favourite keeps its position when picked. Only the marker moves, so the list a user builds deliberately stays where it was put and stays navigable by muscle memory. An ordinary entry travels to the top instead, because the history is a recency list and that is what makes it useful.
