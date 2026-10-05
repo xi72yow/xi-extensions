@@ -1,8 +1,11 @@
-#!/usr/bin/env gjs
+#!/usr/bin/env -S gjs -m
 // Imports the favourites of clipboard-history@alexsaveau.dev into the keyring
 // entry xiws reads.
 //
-// Usage: gjs scripts/import-clipboard-favourites.js [--replace]
+// Usage: gjs -m scripts/import-clipboard-favourites.js [--replace] [log-file]
+//
+// The -m is required: gjs treats a plain .js as a script, in which import
+// declarations are a syntax error.
 //
 // Nothing is printed but counts: the entries are credentials more often than
 // not, so they travel from the log into the keyring without passing through a
@@ -13,7 +16,7 @@
 import GLib from 'gi://GLib'
 import Secret from 'gi://Secret'
 
-const SOURCE = GLib.build_filenamev([
+const DEFAULT_SOURCE = GLib.build_filenamev([
   GLib.get_user_cache_dir(),
   'clipboard-history@alexsaveau.dev',
   'database.log',
@@ -97,7 +100,10 @@ function existing() {
 }
 
 const replace = ARGV.includes('--replace')
-const imported = readFavourites(SOURCE)
+// a path argument lets this run against a backup copy instead of the live log
+const source = ARGV.find((argument) => !argument.startsWith('--')) ?? DEFAULT_SOURCE
+
+const imported = readFavourites(source)
 const current = replace ? [] : existing()
 
 const seen = new Set(current.map((entry) => entry.text))

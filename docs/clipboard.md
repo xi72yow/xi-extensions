@@ -39,7 +39,9 @@ Favourites are listed first, the history below, each row carrying a star to move
 
 ## Migration
 
-`scripts/import-clipboard-favourites.js` reads the favourites out of the foreign log and writes them into the keyring entry, merging with whatever is already there unless `--replace` is passed. It prints counts only, never contents, since the entries are credentials more often than not.
+Run as `gjs -m scripts/import-clipboard-favourites.js`, the `-m` being required since gjs treats a plain `.js` as a script in which import declarations are a syntax error. An optional path argument points it at a backup copy of the log instead of the live one.
+
+It reads the favourites out of the foreign log and writes them into the keyring entry, merging with whatever is already there unless `--replace` is passed. It prints counts only, never contents, since the entries are credentials more often than not.
 
 It should run while the extension is not writing the same secret, so before enabling xiws or with the menu closed, otherwise the two overwrite each other's version of the list.
 
