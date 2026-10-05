@@ -1,4 +1,6 @@
 import Clutter from 'gi://Clutter'
+import Gio from 'gi://Gio'
+import GLib from 'gi://GLib'
 import GObject from 'gi://GObject'
 import Meta from 'gi://Meta'
 import Secret from 'gi://Secret'
@@ -11,6 +13,16 @@ const PASSWORD_HINT = 'x-kde-passwordManagerHint'
 const PREVIEW_LENGTH = 70
 const MENU_WIDTH = 420
 const LIST_HEIGHT = 360
+const THUMBNAIL_SIZE = 48
+
+// images are spooled into the runtime directory rather than held in the shell
+// process: it is a tmpfs owned by the user and taken down with the session, so
+// the bytes stay out of both the compositor heap and any persistent disk
+function spoolDir() {
+  const dir = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'xiws', 'clipboard'])
+  GLib.mkdir_with_parents(dir, 0o700)
+  return dir
+}
 
 // the whole list travels as one secret rather than one secret per entry: it
 // keeps the order without an index attribute and costs a single lookup
@@ -36,6 +48,7 @@ export class ClipboardHistory {
     this._favourites = []
     this._lastUsed = null
     this._onChanged = null
+    this._spooled = 0
 
     this._selection = global.display.get_selection()
     this._ownerChangedId = this._selection.connect('owner-changed', (selection, type) => {
@@ -51,6 +64,7 @@ export class ClipboardHistory {
       this._ownerChangedId = 0
     }
 
+    this._discard(this._entries)
     this._entries = []
     this._onChanged = null
   }
@@ -72,19 +86,44 @@ export class ClipboardHistory {
   }
 
   isFavourite(text) {
-    return this._favourites.some((entry) => entry.text === text)
+    return typeof text === 'string' && this._favourites.some((entry) => entry.text === text)
+  }
+
+  // text entries are compared by their content, images by the file they were
+  // spooled into, which is unique per copy
+  key(entry) {
+    return entry.kind === 'image' ? entry.path : entry.text
   }
 
   // a favourite keeps its place when picked, only the marker moves. an
   // ordinary entry travels to the top, since the history is a recency list
   paste(entry) {
-    St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, entry.text)
+    const clipboard = St.Clipboard.get_default()
+
+    if (entry.kind === 'image') {
+      let bytes
+      try {
+        const [ok, data] = GLib.file_get_contents(entry.path)
+        if (!ok) return
+        bytes = new GLib.Bytes(data)
+      } catch (error) {
+        logError(error, 'xiws: the spooled image is gone')
+        return
+      }
+
+      clipboard.set_content(St.ClipboardType.CLIPBOARD, entry.mimetype, bytes)
+      this._lastUsed = entry.path
+      this._notify()
+      return
+    }
+
+    clipboard.set_text(St.ClipboardType.CLIPBOARD, entry.text)
     this._lastUsed = entry.text
 
     if (!this.isFavourite(entry.text)) {
       this._entries = [
-        { text: entry.text, at: Date.now() },
-        ...this._entries.filter((candidate) => candidate.text !== entry.text),
+        { kind: 'text', text: entry.text, at: Date.now() },
+        ...this._entries.filter((candidate) => this.key(candidate) !== entry.text),
       ]
     }
 
@@ -107,11 +146,13 @@ export class ClipboardHistory {
   }
 
   forget(entry) {
-    this._entries = this._entries.filter((candidate) => candidate.text !== entry.text)
+    this._discard([entry])
+    this._entries = this._entries.filter((candidate) => this.key(candidate) !== this.key(entry))
     this._notify()
   }
 
   clear() {
+    this._discard(this._entries)
     this._entries = []
     this._notify()
   }
@@ -122,13 +163,23 @@ export class ClipboardHistory {
 
   _onClipboardChanged() {
     const clipboard = St.Clipboard.get_default()
+    const mimetypes = clipboard.get_mimetypes(St.ClipboardType.CLIPBOARD)
 
     // password managers announce their entries through this mime type, which
     // is the only reliable way to keep credentials out of the history
     if (
       this._settings.get_boolean('clipboard-ignore-passwords') &&
-      clipboard.get_mimetypes(St.ClipboardType.CLIPBOARD).includes(PASSWORD_HINT)
+      mimetypes.includes(PASSWORD_HINT)
     ) {
+      return
+    }
+
+    // a copied image offers image/* and nothing textual, while rich text
+    // offers text/plain alongside its markup. taking the image only when no
+    // plain text is on offer keeps ordinary copies out of the spool.
+    const image = mimetypes.find((type) => type.startsWith('image/'))
+    if (image && !mimetypes.includes('text/plain')) {
+      this._rememberImage(clipboard, image)
       return
     }
 
@@ -138,15 +189,70 @@ export class ClipboardHistory {
     })
   }
 
+  _rememberImage(clipboard, mimetype) {
+    clipboard.get_content(St.ClipboardType.CLIPBOARD, mimetype, (source, bytes) => {
+      const data = bytes?.get_data()
+      if (!data || data.length === 0) return
+
+      const suffix = mimetype.split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'bin'
+      const path = GLib.build_filenamev([spoolDir(), `${Date.now()}-${this._spooled++}.${suffix}`])
+
+      try {
+        Gio.File.new_for_path(path).replace_contents(
+          data,
+          null,
+          false,
+          Gio.FileCreateFlags.PRIVATE,
+          null,
+        )
+      } catch (error) {
+        logError(error, 'xiws: could not spool the copied image')
+        return
+      }
+
+      const limit = Math.max(this._settings.get_int('clipboard-size'), 1)
+      this._entries = [{ kind: 'image', path, mimetype, at: Date.now() }, ...this._entries]
+      this._discard(this._entries.slice(limit))
+      this._entries = this._entries.slice(0, limit)
+
+      this._lastUsed = path
+      this._notify()
+    })
+  }
+
+  // a spooled image outlives its entry otherwise, and the runtime directory is
+  // only cleared when the session ends
+  _discard(entries) {
+    for (const entry of entries) {
+      if (entry.kind !== 'image') continue
+
+      try {
+        Gio.File.new_for_path(entry.path).delete(null)
+      } catch {
+        // already gone, nothing to do
+      }
+    }
+  }
+
   _remember(text) {
-    if (this.isFavourite(text)) return
+    // the mark follows the clipboard rather than the menu, otherwise it would
+    // keep pointing at an entry that was replaced by a copy made elsewhere
+    this._lastUsed = text
+
+    if (this.isFavourite(text)) {
+      this._notify()
+      return
+    }
 
     const limit = Math.max(this._settings.get_int('clipboard-size'), 1)
 
-    this._entries = [
-      { text, at: Date.now() },
-      ...this._entries.filter((entry) => entry.text !== text),
-    ].slice(0, limit)
+    const kept = [
+      { kind: 'text', text, at: Date.now() },
+      ...this._entries.filter((entry) => this.key(entry) !== text),
+    ]
+
+    this._discard(kept.slice(limit))
+    this._entries = kept.slice(0, limit)
 
     this._notify()
   }
@@ -215,31 +321,58 @@ const ClipboardRow = GObject.registerClass(
 
       if (used) this.add_style_class_name('xiws-clip-used')
 
+      // only the entry that was pasted last carries a mark. the others keep an
+      // empty slot of the same width, otherwise the labels would shift sideways
+      // whenever the mark moves
       this.add_child(
-        new St.Icon({
-          icon_name: used ? 'object-select-symbolic' : 'edit-paste-symbolic',
-          style_class: 'popup-menu-icon xiws-clip-mark',
-        }),
+        used
+          ? new St.Icon({
+              icon_name: 'object-select-symbolic',
+              style_class: 'popup-menu-icon xiws-clip-mark',
+            })
+          : new St.Widget({ style_class: 'xiws-clip-mark' }),
       )
 
-      this.add_child(
-        new St.Label({
-          text: collapse(entry.text),
-          x_expand: true,
+      if (entry.kind === 'image') {
+        // the spool file is what the texture cache loads from, so the shell
+        // keeps the scaled thumbnail rather than the full image
+        this.add_child(
+          new St.Icon({
+            gicon: Gio.icon_new_for_string(entry.path),
+            icon_size: THUMBNAIL_SIZE,
+            style_class: 'xiws-clip-thumb',
+          }),
+        )
+        this.add_child(
+          new St.Label({
+            text: entry.mimetype.replace('image/', '').toUpperCase(),
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+          }),
+        )
+      } else {
+        this.add_child(
+          new St.Label({
+            text: collapse(entry.text),
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+          }),
+        )
+      }
+
+      // an image cannot be starred: the keyring holds small secrets, not blobs
+      if (entry.kind !== 'image') {
+        const star = new St.Button({
+          style_class: 'icon-button xiws-clip-action',
+          child: new St.Icon({
+            icon_name: favourite ? 'starred-symbolic' : 'non-starred-symbolic',
+            style_class: 'popup-menu-icon',
+          }),
           y_align: Clutter.ActorAlign.CENTER,
-        }),
-      )
-
-      const star = new St.Button({
-        style_class: 'icon-button xiws-clip-action',
-        child: new St.Icon({
-          icon_name: favourite ? 'starred-symbolic' : 'non-starred-symbolic',
-          style_class: 'popup-menu-icon',
-        }),
-        y_align: Clutter.ActorAlign.CENTER,
-      })
-      star.connect('clicked', () => this.emit('starred'))
-      this.add_child(star)
+        })
+        star.connect('clicked', () => this.emit('starred'))
+        this.add_child(star)
+      }
 
       if (!favourite) {
         const drop = new St.Button({
@@ -361,7 +494,7 @@ export const ClipboardIndicator = GObject.registerClass(
     _addRow(entry, favourite) {
       const row = new ClipboardRow(entry, {
         favourite,
-        used: this._history.lastUsed === entry.text,
+        used: this._history.lastUsed === this._history.key(entry),
       })
 
       row.connect('picked', () => this._history.paste(entry))
