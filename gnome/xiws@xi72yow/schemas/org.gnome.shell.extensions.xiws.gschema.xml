@@ -140,7 +140,7 @@
       <summary>Recently opened workspaces, most recent first</summary>
     </key>
     <key name="recent-count" type="i">
-      <default>7</default>
+      <default>9</default>
       <summary>How many recent workspaces are listed while the search is empty</summary>
     </key>
     <key name="claim-seconds" type="i">

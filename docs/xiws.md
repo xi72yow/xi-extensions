@@ -134,15 +134,21 @@ It is restored like a session but nothing is forced onto it. Its arrangement is 
 
 The browser is the exception among the three: it is opened with the sentinel `ws=__home__` like on any other workspace, so the tabs of the reserved workspace are persisted and come back with it. The same applies to `<Super>E` while the reserved workspace is active. Other workspaces without a session still get a plain window, since two windows bound to `__home__` would overwrite each other's state.
 
-The dialog shows two sections. Open sessions come first, laid out as cards in a grid of `SESSION_COLUMNS` columns, currently two, each with a thumbnail of its GNOME workspace above its name and number.
+The dialog shows two sections while the search is empty. Open sessions come first, laid out as cards in a grid of `SESSION_COLUMNS` columns, currently two, each with a thumbnail of its GNOME workspace above its name and number. Below them the most recently opened projects follow as tiles in `PROJECT_COLUMNS` columns, currently three, capped by `recent-count`. That default is 9, which comes out as three full rows rather than ending ragged.
 
-**The dialog width is computed, not stated in the stylesheet.** Given in `em`, it drifted against the cards, which are measured in pixels: at the default font size 42em came out around 616 pixels while two cards need 644, and the second column was clipped. `pickerWidth()` derives it from `THUMB_WIDTH`, `SESSION_COLUMNS` and the card metrics instead. Actor sizes are logical pixels while CSS lengths are multiplied by the theme scale factor, so only the padding and spacing parts of that sum are scaled. The stylesheet keeps a `max-width` purely to lift the 28em cap the shell theme puts on a dialog. Then an empty search lists the most recently opened projects as plain rows, capped by `recent-count` and defaulting to 7. Typing switches the lower section to a filter across all discovered projects.
+**A project is a tile, not a row.** As a full width row its name filled a third of the line at most and left the rest empty, and the subtitle repeated the path the name already carried. The tile shows the name over the search root alone, `Workplace` rather than `~/Workplace/elfin`, which is the one thing the name does not say.
 
-Cards carry their own width rather than expanding, so a half filled last line leaves its entry at the same size as the others. The label box is pinned to the thumbnail width and its labels are ellipsized, otherwise a long project name such as `trunshopdev/trunshop24` would widen the card and break the grid alignment.
+**Typing collapses the sections into one list.** Filtering inside the gliederung left headings standing over nothing, and the same hit appeared as a card or as a tile depending on the section it fell into. With a search active the dialog shows sessions first and projects after, without headings, the way the overview search presents its results.
+
+**An empty workspace shows a dimmed symbol** rather than the blank rectangle it used to reserve, which read as a broken thumbnail instead of as an empty desk.
+
+**The dialog width is computed, not stated in the stylesheet.** Given in `em`, it drifted against the cards, which are measured in pixels: at the default font size 42em came out around 616 pixels while two cards need 644, and the second column was clipped. `pickerWidth()` derives it from `THUMB_WIDTH`, `SESSION_COLUMNS` and the card metrics instead, and `tileWidth()` divides the same width among the project columns, so both grids end on the same outer edges. Actor sizes are logical pixels while CSS lengths are multiplied by the theme scale factor, so only the padding and spacing parts of those sums are scaled. The stylesheet keeps a `max-width` purely to lift the 28em cap the shell theme puts on a dialog.
+
+Cards and tiles carry their own width rather than expanding, so a half filled last line leaves its entry at the same size as the others. Their labels are ellipsized against a pinned width, otherwise a long project name such as `trunshopdev/trunshop24` would widen the card and break the grid alignment.
 
 The close button is placed over the thumbnail through a `Clutter.BinLayout` rather than beside the labels. Sharing a row with them, its width competed with their minimum width, and the row then grew past the thumbnail: the button hung over the edge of the card and was clipped by the dialog in the right hand column.
 
-Keyboard navigation stays linear across the grid: Up and Down step through the cards in reading order rather than by column, since Right is already taken by the detail view.
+Keyboard navigation stays linear across the grid: Up and Down step through the entries in reading order rather than by column, since Right is already taken by the detail view.
 
 Sessions are held as a map from project name to `Meta.Workspace`. The object reference is stored rather than the index, because indices shift when dynamic workspaces are added or removed. A session is dropped as soon as its workspace no longer exists or holds no windows, so closing everything on a workspace ends the session implicitly.
 
@@ -179,9 +185,11 @@ Holding a modifier while dragging a window highlights the zone under the pointer
 
 The zones come from `snap-presets`, a list of named layouts whose tiles are fractions of the work area. `snap-preset` holds the index of the active one. The defaults were taken over from the `tilingshell` configuration that was in use before, unchanged including their odd fractions.
 
-The picker carries a row of preset buttons along its bottom edge, each drawing its layout in miniature rather than using an icon, which makes them self explanatory. Clicking one switches the active preset. The row stays hidden while fewer than two presets exist.
+The picker carries the preset buttons beside its search field, each drawing its layout in miniature rather than using an icon, which makes them self explanatory. Clicking one switches the active preset. They stay hidden while fewer than two presets exist.
 
-The buttons are spread evenly across the bar rather than left aligned. `St.BoxLayout` offers no space distribution of its own, so each button expands into an equal slot while keeping its natural size through `x_align: CENTER`. The spacing in the stylesheet then only guarantees a minimum gap for a narrow bar.
+They sat along the bottom edge before, on an etage of their own. A preset is a setting rather than an entry, and the header row is spanned by the search field anyway, so moving them up cost no height at all.
+
+Their fill is read from the theme in `buildPresetIcon` through `get_theme_node().get_foreground_color()` rather than written into the stylesheet. A hardcoded white disappears against a light theme, and the accent colour, tried first, shouted louder than the thing it was decorating.
 
 There is no editor for the presets yet, they are JSON in the setting. A graphical one belongs in `prefs.js`, where GTK4 and Adwaita are available. Noted as an idea, not implemented.
 
@@ -306,34 +314,34 @@ Folders written under the old names stay behind and are not migrated. They are o
 
 All of these live under `/org/gnome/shell/extensions/xiws/` and can be dumped with `dconf dump` for backup.
 
-| Key                          | Default                             | Purpose                                                   |
-| ---------------------------- | ----------------------------------- | --------------------------------------------------------- |
-| `toggle-picker`              | `<Super>W`                          | open the workspace picker                                 |
-| `toggle-clipboard`           | `<Super>C`                          | open the clipboard history                                |
-| `open-browser`               | `<Super>E`                          | browser of the current session                            |
-| `open-git`                   | `<Super>D`                          | git client for the current session                        |
-| `search-paths`               | `~/Schreibtisch`, `~/Workplace`     | where repositories are looked for                         |
-| `search-depth`               | 3                                   | levels below a search path                                |
-| `search-exclude`             | `node_modules` and similar          | never descended into                                      |
-| `recent-workspaces`          | empty                               | most recently opened, written automatically               |
-| `recent-count`               | 7                                   | how many are listed without a search                      |
-| `home-label`                 | Persönlich                          | name of the reserved workspace                            |
-| `first-workspace-index`      | 1                                   | lowest workspace usable for sessions                      |
-| `editor-command`             | `zed --new`                         | project path is appended                                  |
-| `editor-desktop-id`          | `dev.zed.Zed.desktop`               | for detection and restoring                               |
-| `browser-command`            | `google-chrome`                     |                                                           |
-| `browser-desktop-id`         | `google-chrome.desktop`             | also used to check whether it runs                        |
-| `git-desktop-id`             | `github-desktop.desktop`            | the application that follows sessions                     |
-| `session-desktop-ids`        | editor, browser, git                | whose windows are moved onto a session                    |
-| `claim-window-classes`       | empty                               | fallback for windows without an application               |
-| `claim-seconds`              | 25                                  | how long new windows are claimed                          |
-| `session-layout`             | Chrome left, Zed right, git centred | default arrangement                                       |
-| `session-apps`               | empty                               | captured arrangement per workspace, written automatically |
-| `snap-presets`               | four layouts                        | zones for drag snapping                                   |
-| `snap-preset`                | 0                                   | which one is active                                       |
-| `snap-modifier`              | control                             | armed while dragging                                      |
-| `clipboard-size`             | 200                                 | entries kept                                              |
-| `clipboard-ignore-passwords` | true                                | skip password manager entries                             |
+| Key                          | Default                             | Purpose                                                    |
+| ---------------------------- | ----------------------------------- | ---------------------------------------------------------- |
+| `toggle-picker`              | `<Super>W`                          | open the workspace picker                                  |
+| `toggle-clipboard`           | `<Super>C`                          | open the clipboard history                                 |
+| `open-browser`               | `<Super>E`                          | browser of the current session                             |
+| `open-git`                   | `<Super>D`                          | git client for the current session                         |
+| `search-paths`               | `~/Schreibtisch`, `~/Workplace`     | where repositories are looked for                          |
+| `search-depth`               | 3                                   | levels below a search path                                 |
+| `search-exclude`             | `node_modules` and similar          | never descended into                                       |
+| `recent-workspaces`          | empty                               | most recently opened, written automatically                |
+| `recent-count`               | 9                                   | how many are listed without a search, three full tile rows |
+| `home-label`                 | Persönlich                          | name of the reserved workspace                             |
+| `first-workspace-index`      | 1                                   | lowest workspace usable for sessions                       |
+| `editor-command`             | `zed --new`                         | project path is appended                                   |
+| `editor-desktop-id`          | `dev.zed.Zed.desktop`               | for detection and restoring                                |
+| `browser-command`            | `google-chrome`                     |                                                            |
+| `browser-desktop-id`         | `google-chrome.desktop`             | also used to check whether it runs                         |
+| `git-desktop-id`             | `github-desktop.desktop`            | the application that follows sessions                      |
+| `session-desktop-ids`        | editor, browser, git                | whose windows are moved onto a session                     |
+| `claim-window-classes`       | empty                               | fallback for windows without an application                |
+| `claim-seconds`              | 25                                  | how long new windows are claimed                           |
+| `session-layout`             | Chrome left, Zed right, git centred | default arrangement                                        |
+| `session-apps`               | empty                               | captured arrangement per workspace, written automatically  |
+| `snap-presets`               | four layouts                        | zones for drag snapping                                    |
+| `snap-preset`                | 0                                   | which one is active                                        |
+| `snap-modifier`              | control                             | armed while dragging                                       |
+| `clipboard-size`             | 200                                 | entries kept                                               |
+| `clipboard-ignore-passwords` | true                                | skip password manager entries                              |
 
 ## Open
 

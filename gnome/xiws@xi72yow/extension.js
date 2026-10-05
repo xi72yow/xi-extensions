@@ -11,7 +11,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js'
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js'
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js'
 
-import { ResultRow, SearchDialog } from './lib/searchDialog.js'
+import { SearchDialog } from './lib/searchDialog.js'
 import { ClipboardHistory, ClipboardIndicator } from './lib/clipboard.js'
 import { BrightnessController, BrightnessIndicator } from './lib/brightness.js'
 
@@ -47,6 +47,8 @@ const THUMB_FALLBACK_RATIO = 16 / 10
 // the session cards sit in a grid rather than a list, so a workspace is
 // recognised by its thumbnail before its name is read
 const SESSION_COLUMNS = 2
+// a project tile carries two short lines, so three fit where two cards do
+const PROJECT_COLUMNS = 3
 const PRESET_ICON_WIDTH = 64
 const PRESET_ICON_HEIGHT = 32
 // kept in sync with .xiws-card and .xiws-grid-row in the stylesheet, the
@@ -63,7 +65,7 @@ function expandHome(path) {
 // a directory without .git is descended into, so repositories grouped under
 // a folder are found as well. a repository is never descended into, which
 // keeps submodules and vendored checkouts out of the list.
-function scanForRepositories(base, prefix, depth, limit, exclude, found) {
+function scanForRepositories(base, prefix, depth, limit, exclude, found, root) {
   if (depth > limit) return
 
   let children
@@ -88,11 +90,11 @@ function scanForRepositories(base, prefix, depth, limit, exclude, found) {
     const label = prefix ? `${prefix}/${name}` : name
 
     if (GLib.file_test(GLib.build_filenamev([path, '.git']), GLib.FileTest.EXISTS)) {
-      found.push({ name: label, path })
+      found.push({ name: label, path, root })
       continue
     }
 
-    scanForRepositories(path, label, depth + 1, limit, exclude, found)
+    scanForRepositories(path, label, depth + 1, limit, exclude, found, root)
   }
 }
 
@@ -101,7 +103,8 @@ function discoverWorkspaces(searchPaths, depth, exclude) {
   const limit = Math.max(depth, 1)
 
   for (const searchPath of searchPaths) {
-    scanForRepositories(expandHome(searchPath), '', 1, limit, exclude, found)
+    const base = expandHome(searchPath)
+    scanForRepositories(base, '', 1, limit, exclude, found, GLib.path_get_basename(base))
   }
 
   return found.sort((a, b) => a.name.localeCompare(b.name))
@@ -257,6 +260,16 @@ function pickerWidth() {
   return Math.round(SESSION_COLUMNS * card + gaps * scale)
 }
 
+// the project tiles share the width the session cards define, so both grids
+// line up on the same outer edges
+function tileWidth() {
+  const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor
+  const inner = pickerWidth() - SCROLLBAR_RESERVE * scale
+  const gaps = (PROJECT_COLUMNS - 1) * GRID_SPACING * scale
+
+  return Math.floor((inner - gaps) / PROJECT_COLUMNS - 2 * CARD_PADDING * scale)
+}
+
 // a card is only as wide as its thumbnail, so labels have to give way rather
 // than stretch it
 function ellipsized(text, styleClass) {
@@ -281,14 +294,32 @@ function buildThumbnail(workspace) {
     width: THUMB_WIDTH,
     height,
     clip_to_allocation: true,
+    layout_manager: new Clutter.BinLayout(),
   })
 
   if (!usable) return container
 
+  const windows = visibleWindows(workspace)
+
+  // an empty workspace would otherwise reserve the same blank rectangle as a
+  // full one, which reads as a broken thumbnail rather than as an empty desk
+  if (windows.length === 0) {
+    container.add_child(
+      new St.Icon({
+        icon_name: 'video-display-symbolic',
+        icon_size: Math.min(Math.round(height / 2), 32),
+        style_class: 'xiws-thumb-empty',
+        x_align: Clutter.ActorAlign.CENTER,
+        y_align: Clutter.ActorAlign.CENTER,
+      }),
+    )
+    return container
+  }
+
   const scale = THUMB_WIDTH / area.width
   const tracker = Shell.WindowTracker.get_default()
 
-  for (const window of visibleWindows(workspace)) {
+  for (const window of windows) {
     const actor = window.get_compositor_private()
     const frame = window.get_frame_rect()
 
@@ -372,17 +403,28 @@ function activeTiles(settings) {
 function buildPresetIcon(tiles, width, height) {
   const box = new St.Widget({ style_class: 'xiws-preset-icon', width, height })
 
+  const drawn = []
   for (const tile of tiles) {
-    box.add_child(
-      new St.Widget({
-        style_class: 'xiws-preset-tile',
-        x: Math.round(tile.x * width),
-        y: Math.round(tile.y * height),
-        width: Math.max(Math.round(tile.width * width) - 2, 1),
-        height: Math.max(Math.round(tile.height * height) - 2, 1),
-      }),
-    )
+    const actor = new St.Widget({
+      style_class: 'xiws-preset-tile',
+      x: Math.round(tile.x * width),
+      y: Math.round(tile.y * height),
+      width: Math.max(Math.round(tile.width * width) - 2, 1),
+      height: Math.max(Math.round(tile.height * height) - 2, 1),
+    })
+    box.add_child(actor)
+    drawn.push(actor)
   }
+
+  // a drawn miniature needs a fill and the theme has no variable for one. the
+  // foreground colour is read from the theme node instead of hardcoding a
+  // value, so the tiles hold up in a light theme and never shout like accent
+  box.connect('style-changed', () => {
+    const colour = box.get_theme_node().get_foreground_color()
+    const fill = `rgba(${colour.red}, ${colour.green}, ${colour.blue}, 0.4)`
+
+    for (const actor of drawn) actor.set_style(`background-color: ${fill};`)
+  })
 
   return box
 }
@@ -713,11 +755,30 @@ const SessionRow = GObject.registerClass(
   },
 )
 
-const WorkspaceRow = GObject.registerClass(
-  class WorkspaceRow extends ResultRow {
+// a project is a tile rather than a full width row: the name fills a third of
+// the line at most, so a list left two thirds of every row empty. the subtitle
+// is the search root alone, since the path below it only repeats the name.
+const WorkspaceTile = GObject.registerClass(
+  class WorkspaceTile extends St.Button {
     _init(workspace) {
-      super._init(workspace.name, workspace.path)
+      super._init({
+        style_class: 'list-search-result xiws-tile',
+        can_focus: true,
+        x_align: Clutter.ActorAlign.START,
+        y_align: Clutter.ActorAlign.START,
+      })
+
       this.workspace = workspace
+
+      const box = new St.BoxLayout({
+        vertical: true,
+        width: tileWidth(),
+        style_class: 'list-search-result-content',
+      })
+      box.add_child(ellipsized(workspace.name, 'list-search-result-title'))
+      box.add_child(ellipsized(workspace.root ?? '', 'list-search-result-description'))
+
+      this.set_child(box)
     }
   },
 )
@@ -735,8 +796,10 @@ const WorkspacePicker = GObject.registerClass(
       this._claims = []
       this._deferred = new Set()
 
-      this._presetBar = new St.BoxLayout({ style_class: 'xiws-preset-bar', x_expand: true })
-      this.contentLayout.add_child(this._presetBar)
+      // the presets are a setting rather than an entry, so they sit beside the
+      // search field instead of occupying a row of their own below the list
+      this._presetBar = new St.BoxLayout({ style_class: 'xiws-preset-bar' })
+      this.addToHeader(this._presetBar)
 
       this.contentLayout.set_width(pickerWidth())
     }
@@ -799,8 +862,7 @@ const WorkspacePicker = GObject.registerClass(
           can_focus: true,
           toggle_mode: true,
           checked: index === active,
-          x_expand: true,
-          x_align: Clutter.ActorAlign.CENTER,
+          y_align: Clutter.ActorAlign.CENTER,
           child: buildPresetIcon(preset.tiles, PRESET_ICON_WIDTH, PRESET_ICON_HEIGHT),
         })
 
@@ -1072,15 +1134,52 @@ const WorkspacePicker = GObject.registerClass(
     render() {
       this.clearRows()
 
+      if (this.needle) {
+        this._renderSearch()
+      } else {
+        this._renderSections()
+      }
+    }
+
+    // typing collapses the sections into one ranked list. filtering inside the
+    // gliederung left headings standing over nothing and showed the same hit
+    // as a card or as a tile depending on which section it fell into.
+    _renderSearch() {
       const needle = this.needle
       const matches = (name) => name.toLowerCase().includes(needle)
 
       const home = this._homeSession()
-      const showHome = home !== null && (!needle || matches(home.name))
+      if (home && matches(home.name)) {
+        const row = new SessionRow(home, { closable: false })
+        this.addRow(row, () => this._openHome(home.workspace), { columns: SESSION_COLUMNS })
+      }
 
-      const sessions = this._liveSessions().filter((session) => !needle || matches(session.name))
+      const sessions = this._liveSessions().filter((session) => matches(session.name))
+      for (const session of sessions) {
+        const row = new SessionRow(session)
+        row.connect('closed', () => this._closeSession(session))
+        this.addRow(row, () => this._switchTo(session), { columns: SESSION_COLUMNS })
+      }
 
-      if (showHome || sessions.length > 0) {
+      const open = new Set(sessions.map((session) => session.name))
+      const projects = this._workspaces.filter(
+        (workspace) => matches(workspace.name) && !open.has(workspace.name),
+      )
+
+      for (const workspace of projects) {
+        this.addRow(new WorkspaceTile(workspace), () => this._open(workspace), {
+          columns: PROJECT_COLUMNS,
+        })
+      }
+
+      if (this._rows.length === 0) this.addHeading('Nichts gefunden')
+    }
+
+    _renderSections() {
+      const home = this._homeSession()
+      const sessions = this._liveSessions()
+
+      if (home || sessions.length > 0) {
         this.addHeading(
           'Offene Sessions',
           sessions.length > 0
@@ -1088,7 +1187,7 @@ const WorkspacePicker = GObject.registerClass(
             : null,
         )
 
-        if (showHome) {
+        if (home) {
           const row = new SessionRow(home, { closable: false })
           this.addRow(row, () => this._openHome(home.workspace), { columns: SESSION_COLUMNS })
         }
@@ -1101,19 +1200,15 @@ const WorkspacePicker = GObject.registerClass(
       }
 
       const open = new Set(sessions.map((session) => session.name))
-      const listed = needle
-        ? this._workspaces.filter((workspace) => matches(workspace.name))
-        : this._recentWorkspaces()
-
-      const remaining = listed.filter((workspace) => !open.has(workspace.name))
+      const remaining = this._recentWorkspaces().filter((workspace) => !open.has(workspace.name))
       if (remaining.length === 0) return
 
-      if (sessions.length > 0 || !needle) {
-        this.addHeading(needle ? 'Projekte' : 'Zuletzt verwendet')
-      }
+      this.addHeading('Zuletzt verwendet')
 
       for (const workspace of remaining) {
-        this.addRow(new WorkspaceRow(workspace), () => this._open(workspace))
+        this.addRow(new WorkspaceTile(workspace), () => this._open(workspace), {
+          columns: PROJECT_COLUMNS,
+        })
       }
     }
 

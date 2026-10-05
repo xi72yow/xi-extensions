@@ -9,9 +9,19 @@
   spacing: 6px;
 }
 
+.xiws-header {
+  spacing: 12px;
+}
+
 .xiws-search {
   width: auto;
   margin: 0;
+}
+
+/* the tile holds two short lines, the width is set in tileWidth() so both
+   grids line up on the same outer edges */
+.xiws-tile {
+  padding: 8px;
 }
 
 .xiws-list {
@@ -27,14 +37,10 @@
   padding-right: 6px;
 }
 
+/* the shell defines every state for icon-button, a hover colour of our own
+   would be hardcoded against one theme */
 .xiws-heading-action {
   padding: 4px 10px;
-  border-radius: 6px;
-}
-
-.xiws-heading-action:hover,
-.xiws-heading-action:focus {
-  background-color: rgba(255, 255, 255, 0.08);
 }
 
 .xiws-row {
@@ -90,32 +96,26 @@
 }
 
 .xiws-clip-search {
-  width: auto;
-  margin: 0;
+  margin: 6px 6px 0 6px;
 }
 
+/* st has no overlay scrollbars, the bar takes layout space. the margin and
+   padding follow .message-list, so a row ends before the bar instead of its
+   hover highlight running underneath it. */
 .xiws-clip-list {
-  margin: 0;
+  margin: 6px 4px 0 0;
+  padding-right: 6px;
 }
 
+/* the heading style of the calendar menu: bold and dimmed against the rows */
 .xiws-clip-heading {
   font-weight: 700;
+  padding-bottom: 0;
 }
 
-/* the mark column keeps a fixed width so the labels line up whether or not a
-   row is the one that was pasted last */
-.xiws-clip-mark {
-  width: 16px;
-  margin-right: 6px;
-}
-
-.xiws-clip-used {
-  font-weight: 700;
-}
-
+/* padding follows message-close-button, the rest comes from icon-button */
 .xiws-clip-action {
-  padding: 2px;
-  margin-left: 4px;
+  padding: 4px;
 }
 
 /* fill and border come from tile-preview, the class the shell uses for its
@@ -124,36 +124,37 @@
   border-radius: 12px;
 }
 
-/* the buttons expand into equal slots, the spacing only guarantees a minimum
-   gap when the bar is narrow */
+/* sitting beside the search field now, so no padding of its own beyond the
+   gap between the buttons */
 .xiws-preset-bar {
-  spacing: 6px;
-  padding: 10px 6px 2px 6px;
+  spacing: 4px;
 }
 
 .xiws-preset {
   padding: 6px;
-  border-radius: 8px;
 }
 
-.xiws-preset:hover,
-.xiws-preset:focus {
-  background-color: rgba(255, 255, 255, 0.08);
-}
-
-/* the border eats into the padding so the icon does not shift on selection */
+/* the accent border matches workspace-thumbnail-indicator, and it eats into
+   the padding so the icon does not shift when the selection moves */
 .xiws-preset:checked {
   border: 2px solid -st-accent-color;
   padding: 4px;
 }
 
+/* the fill is set in buildPresetIcon from the theme foreground colour, see the
+   comment there */
 .xiws-preset-tile {
   border-radius: 2px;
-  background-color: rgba(255, 255, 255, 0.35);
 }
 
-/* the thumbnail sits where a text label would, so the row keeps its height */
+/* an empty workspace shows a dimmed symbol rather than a blank rectangle */
+.xiws-thumb-empty {
+  opacity: 0.3;
+}
+
+/* 8px matches the album art of a media notification, the closest thing the
+   shell has to a thumbnail in a list row */
 .xiws-clip-thumb {
-  border-radius: 4px;
-  margin-right: 8px;
+  border-radius: 8px;
+  margin-right: 6px;
 }

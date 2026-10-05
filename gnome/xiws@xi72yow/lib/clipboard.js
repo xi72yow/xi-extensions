@@ -13,7 +13,8 @@ const PASSWORD_HINT = 'x-kde-passwordManagerHint'
 const PREVIEW_LENGTH = 70
 const MENU_WIDTH = 420
 const LIST_HEIGHT = 360
-const THUMBNAIL_SIZE = 48
+const THUMBNAIL_HEIGHT = 36
+const THUMBNAIL_MAX_WIDTH = 160
 
 // images are spooled into the runtime directory rather than held in the shell
 // process: it is a tmpfs owned by the user and taken down with the session, so
@@ -31,6 +32,29 @@ const FAVOURITES_SCHEMA = Secret.Schema.new('dev.xi72yow.xiws.Clipboard', Secret
 })
 const FAVOURITES_ATTRIBUTES = { store: 'favourites' }
 const FAVOURITES_LABEL = 'xiws clipboard favourites'
+
+// a fixed height with the width following the aspect ratio: the texture cache
+// scales from the spool file, so the shell keeps the thumbnail rather than the
+// full image. a very wide capture is capped so it cannot stretch the row.
+function buildThumbnail(path) {
+  const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor
+  const texture = St.TextureCache.get_default().load_file_async(
+    Gio.File.new_for_path(path),
+    -1,
+    THUMBNAIL_HEIGHT,
+    scale,
+    1,
+  )
+
+  const frame = new St.Bin({
+    style_class: 'xiws-clip-thumb',
+    y_align: Clutter.ActorAlign.CENTER,
+    child: texture,
+  })
+  frame.set_style(`max-width: ${THUMBNAIL_MAX_WIDTH}px;`)
+
+  return frame
+}
 
 function collapse(text) {
   const single = text.replace(/\s+/g, ' ').trim()
@@ -314,35 +338,22 @@ const ClipboardRow = GObject.registerClass(
     },
   },
   class ClipboardRow extends PopupMenu.PopupBaseMenuItem {
-    _init(entry, { favourite, used }) {
+    _init(entry, { favourite, used, marked }) {
       super._init()
 
       this.entry = entry
 
-      if (used) this.add_style_class_name('xiws-clip-used')
-
-      // only the entry that was pasted last carries a mark. the others keep an
-      // empty slot of the same width, otherwise the labels would shift sideways
-      // whenever the mark moves
-      this.add_child(
-        used
-          ? new St.Icon({
-              icon_name: 'object-select-symbolic',
-              style_class: 'popup-menu-icon xiws-clip-mark',
-            })
-          : new St.Widget({ style_class: 'xiws-clip-mark' }),
-      )
+      // the shell owns the column in front of a menu item: CHECK draws the
+      // mark, NONE reserves the space so the labels stay aligned, and HIDDEN
+      // drops the column entirely when nothing in the list is marked
+      if (used) {
+        this.setOrnament(PopupMenu.Ornament.CHECK)
+      } else {
+        this.setOrnament(marked ? PopupMenu.Ornament.NONE : PopupMenu.Ornament.HIDDEN)
+      }
 
       if (entry.kind === 'image') {
-        // the spool file is what the texture cache loads from, so the shell
-        // keeps the scaled thumbnail rather than the full image
-        this.add_child(
-          new St.Icon({
-            gicon: Gio.icon_new_for_string(entry.path),
-            icon_size: THUMBNAIL_SIZE,
-            style_class: 'xiws-clip-thumb',
-          }),
-        )
+        this.add_child(buildThumbnail(entry.path))
         this.add_child(
           new St.Label({
             text: entry.mimetype.replace('image/', '').toUpperCase(),
@@ -362,30 +373,28 @@ const ClipboardRow = GObject.registerClass(
 
       // an image cannot be starred: the keyring holds small secrets, not blobs
       if (entry.kind !== 'image') {
-        const star = new St.Button({
-          style_class: 'icon-button xiws-clip-action',
-          child: new St.Icon({
-            icon_name: favourite ? 'starred-symbolic' : 'non-starred-symbolic',
-            style_class: 'popup-menu-icon',
-          }),
-          y_align: Clutter.ActorAlign.CENTER,
-        })
-        star.connect('clicked', () => this.emit('starred'))
-        this.add_child(star)
+        this.add_child(
+          this._action(favourite ? 'starred-symbolic' : 'non-starred-symbolic', () =>
+            this.emit('starred'),
+          ),
+        )
       }
 
       if (!favourite) {
-        const drop = new St.Button({
-          style_class: 'icon-button xiws-clip-action',
-          child: new St.Icon({
-            icon_name: 'edit-delete-symbolic',
-            style_class: 'popup-menu-icon',
-          }),
-          y_align: Clutter.ActorAlign.CENTER,
-        })
-        drop.connect('clicked', () => this.emit('dropped'))
-        this.add_child(drop)
+        this.add_child(this._action('edit-delete-symbolic', () => this.emit('dropped')))
       }
+    }
+
+    // icon-button carries every state the shell defines for a round button,
+    // the padding follows the notification close button
+    _action(iconName, onClick) {
+      const button = new St.Button({
+        style_class: 'icon-button flat xiws-clip-action',
+        child: new St.Icon({ icon_name: iconName, style_class: 'popup-menu-icon' }),
+        y_align: Clutter.ActorAlign.CENTER,
+      })
+      button.connect('clicked', onClick)
+      return button
     }
 
     activate(event) {
@@ -411,30 +420,32 @@ export const ClipboardIndicator = GObject.registerClass(
         new St.Icon({ icon_name: 'edit-paste-symbolic', style_class: 'system-status-icon' }),
       )
 
+      // a bare St.Entry inherits the shell entry style, radius and accent
+      // focus ring included. search-entry is the pill used over the dark
+      // background of the overview and would look foreign inside a menu.
       this._searchEntry = new St.Entry({
-        style_class: 'search-entry xiws-clip-search',
+        style_class: 'xiws-clip-search',
         hint_text: 'Zwischenablage',
         can_focus: true,
         x_expand: true,
       })
       this._searchEntry.clutter_text.connect('text-changed', () => this._render())
 
-      const search = new PopupMenu.PopupBaseMenuItem({ reactive: false, can_focus: false })
-      search.add_child(this._searchEntry)
-      this.menu.addMenuItem(search)
-
       this._section = new PopupMenu.PopupMenuSection()
 
+      // st has no overlay scrollbars, the bar takes layout space. the shell
+      // compensates on the scrolling box itself, see .message-list, otherwise
+      // the hover highlight of a row runs underneath the bar.
       this._scrollView = new St.ScrollView({
-        style_class: 'xiws-clip-list',
-        overlay_scrollbars: true,
+        style_class: 'xiws-clip-list vfade',
         y_expand: true,
       })
       this._scrollView.add_child(this._section.actor)
 
-      const list = new PopupMenu.PopupBaseMenuItem({ reactive: false, can_focus: false })
-      list.add_child(this._scrollView)
-      this.menu.addMenuItem(list)
+      // these are containers, not rows: a PopupBaseMenuItem would bring its
+      // own padding and hover state along
+      this.menu.box.add_child(this._searchEntry)
+      this.menu.box.add_child(this._scrollView)
 
       this.menu.box.set_width(MENU_WIDTH)
       this._scrollView.set_height(LIST_HEIGHT)
@@ -461,15 +472,21 @@ export const ClipboardIndicator = GObject.registerClass(
       const favourites = this._history.favourites.filter(matches)
       const entries = this._history.entries.filter(matches)
 
+      // the ornament column is only reserved when something in the list wears
+      // a mark, so a list without one keeps no empty gutter
+      const marked = [...favourites, ...entries].some(
+        (entry) => this._history.lastUsed === this._history.key(entry),
+      )
+
       if (favourites.length > 0) {
         this._addHeading('Favoriten')
-        for (const entry of favourites) this._addRow(entry, true)
+        for (const entry of favourites) this._addRow(entry, true, marked)
       }
 
       if (entries.length > 0) {
         if (favourites.length > 0) this._addSeparator()
         this._addHeading('Verlauf')
-        for (const entry of entries) this._addRow(entry, false)
+        for (const entry of entries) this._addRow(entry, false, marked)
       }
 
       if (favourites.length === 0 && entries.length === 0) {
@@ -491,9 +508,10 @@ export const ClipboardIndicator = GObject.registerClass(
       this._section.addMenuItem(new PopupMenu.PopupSeparatorMenuItem())
     }
 
-    _addRow(entry, favourite) {
+    _addRow(entry, favourite, marked) {
       const row = new ClipboardRow(entry, {
         favourite,
+        marked,
         used: this._history.lastUsed === this._history.key(entry),
       })
 

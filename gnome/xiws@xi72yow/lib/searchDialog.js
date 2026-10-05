@@ -27,6 +27,11 @@ export const SearchDialog = GObject.registerClass(
         this._onSearchKey(event),
       )
 
+      // the header carries the search field and whatever a subclass hangs
+      // next to it, so a toolbar does not need an etage of its own
+      this._header = new St.BoxLayout({ x_expand: true, style_class: 'xiws-header' })
+      this._header.add_child(this._searchEntry)
+
       this._rowBox = new St.BoxLayout({ vertical: true, x_expand: true })
 
       this._scrollView = new St.ScrollView({
@@ -36,10 +41,14 @@ export const SearchDialog = GObject.registerClass(
       })
       this._scrollView.add_child(this._rowBox)
 
-      this.contentLayout.add_child(this._searchEntry)
+      this.contentLayout.add_child(this._header)
       this.contentLayout.add_child(this._scrollView)
 
       this.setInitialKeyFocus(this._searchEntry.clutter_text)
+    }
+
+    addToHeader(actor) {
+      this._header.add_child(actor)
     }
 
     get needle() {
@@ -192,34 +201,6 @@ export const SearchDialog = GObject.registerClass(
 
       global.stage.set_key_focus(entry.row)
       ensureActorVisibleInScrollView(this._scrollView, entry.row)
-    }
-  },
-)
-
-export const ResultRow = GObject.registerClass(
-  class ResultRow extends St.Button {
-    _init(title, subtitle) {
-      super._init({
-        style_class: 'list-search-result xiws-row',
-        can_focus: true,
-        x_expand: true,
-        x_align: Clutter.ActorAlign.FILL,
-      })
-
-      const box = new St.BoxLayout({
-        vertical: true,
-        x_expand: true,
-        style_class: 'list-search-result-content',
-      })
-      box.add_child(new St.Label({ text: title, style_class: 'list-search-result-title' }))
-
-      if (subtitle) {
-        box.add_child(
-          new St.Label({ text: subtitle, style_class: 'list-search-result-description' }),
-        )
-      }
-
-      this.set_child(box)
     }
   },
 )
