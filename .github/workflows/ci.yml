@@ -12,7 +12,7 @@ on:
         required: true
         default: 'no'
       version:
-        description: 'Version tag (e.g. v0.1.0). Leave empty to use debian/changelog version.'
+        description: 'Override version (e.g. 0.2.0). Leave empty to raise the patch level.'
         required: false
 
 permissions:
@@ -167,38 +167,103 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine version
+      # the version is not maintained by hand: the patch level is raised per
+      # release and the changelog entry is written from the commits since the
+      # previous tag. the input field overrides it when a different step is
+      # wanted, say a minor or a major one.
+      - name: Raise version and write changelog
         id: version
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            BASE="${{ github.event.inputs.version }}"
-          else
-            VERSION=$(dpkg-parsechangelog -l debian/changelog -S Version)
-            BASE="v${VERSION}"
-          fi
-
           git fetch --tags
-          LATEST_TAG=$(git tag -l "${BASE}-*" --sort=-v:refname | head -1)
-          if [ -n "$LATEST_TAG" ]; then
-            CURRENT_REV=$(echo "$LATEST_TAG" | sed "s/${BASE}-//")
-            NEW_REV=$((CURRENT_REV + 1))
+
+          CURRENT=$(dpkg-parsechangelog -l debian/changelog -S Version)
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            VERSION="${VERSION#v}"
           else
-            if git rev-parse "${BASE}" >/dev/null 2>&1; then
-              NEW_REV=2
-            else
-              NEW_REV=1
-            fi
+            MAJOR=${CURRENT%%.*}
+            REST=${CURRENT#*.}
+            MINOR=${REST%%.*}
+            PATCH=${REST#*.}
+            VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
           fi
 
-          TAG="${BASE}-${NEW_REV}"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "Release tag: ${TAG}"
+          TAG="v${VERSION}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "::error::tag ${TAG} already exists"
+            exit 1
+          fi
 
-      - name: Download packages
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          RANGE=""
+          if [ -n "$LAST_TAG" ]; then
+            RANGE="${LAST_TAG}..HEAD"
+          fi
+
+          MAINTAINER=$(dpkg-parsechangelog -l debian/changelog -S Maintainer)
+          ENTRIES=$(git log $RANGE --no-merges --pretty=format:'  * %s')
+          if [ -z "$ENTRIES" ]; then
+            ENTRIES="  * No changes recorded since ${LAST_TAG}."
+          fi
+
+          {
+            echo "xi-extensions (${VERSION}) unstable; urgency=medium"
+            echo
+            echo "${ENTRIES}"
+            echo
+            echo " -- ${MAINTAINER}  $(date -R)"
+            echo
+            cat debian/changelog
+          } > debian/changelog.new
+          mv debian/changelog.new debian/changelog
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${TAG}"
+
+      - name: Download container image
         uses: actions/download-artifact@v8
         with:
-          name: packages
-          path: packages
+          name: build-image
+
+      - name: Load container image
+        run: zstd -d image.tar.zst -o image.tar && docker load < image.tar
+
+      - name: Provide CRX key
+        env:
+          CHROME_CRX_KEY: ${{ secrets.CHROME_CRX_KEY }}
+        run: |
+          if [ -z "${CHROME_CRX_KEY}" ]; then
+            echo "::error::CHROME_CRX_KEY secret is missing, the chrome package cannot be signed"
+            exit 1
+          fi
+          printf '%s\n' "${CHROME_CRX_KEY}" > crx-key.pem
+          chmod 600 crx-key.pem
+
+      # the packages from the build job carry the previous version, so they are
+      # built again here against the changelog entry written above
+      - name: Build release packages
+        run: |
+          docker run --rm \
+            -v $(pwd):/app \
+            -e CRX_KEY=/tmp/build/src/crx-key.pem \
+            build-image \
+            bash -c '
+              set -e
+              mkdir -p /tmp/build/src
+              cp -a /app/. /tmp/build/src/
+              rm -rf /tmp/build/src/node_modules /tmp/build/src/.git
+              cd /tmp/build/src
+              dpkg-buildpackage -us -uc -b
+              lintian --fail-on error,warning /tmp/build/*.changes
+              mkdir -p /app/packages
+              cp /tmp/build/*.deb /app/packages/
+            '
+          sudo chown -R "$(id -u):$(id -g)" packages
+
+      - name: Drop CRX key
+        if: always()
+        run: rm -f crx-key.pem
 
       - name: Import GPG key
         env:
@@ -210,10 +275,15 @@ jobs:
           sudo apt-get update && sudo apt-get install -y dpkg-dev apt-utils
           ./scripts/update-repo.sh
 
-      - name: Create tag
+      # the changelog belongs to the release, so it is committed before the tag
+      # is made to point at it
+      - name: Commit changelog and tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add debian/changelog
+          git commit -m "chore: release ${{ steps.version.outputs.tag }}"
+          git push origin HEAD:main
           git tag "${{ steps.version.outputs.tag }}"
           git push origin "${{ steps.version.outputs.tag }}"
 

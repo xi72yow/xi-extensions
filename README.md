@@ -72,10 +72,13 @@ by `Containerfile`, which keeps the toolchain identical to the local one. The
 build is checked with `lintian --fail-on error,warning` and the resulting
 package is test installed.
 
-A release is triggered manually through `workflow_dispatch`. It derives the
-version from `debian/changelog`, appends an incrementing revision, tags the
-commit, signs the repository with the `GPG_PRIVATE_KEY` secret and publishes it
-to GitHub Pages.
+A release is triggered manually through `workflow_dispatch`. The version is not
+maintained by hand: the patch level is raised against `debian/changelog`, the
+entry is written from the commit subjects since the previous tag, and that
+changelog commit is what the tag points at. The input field overrides the
+version when a minor or major step is wanted. The packages are then built again
+against the new version, the repository is signed with the `GPG_PRIVATE_KEY`
+secret and published to GitHub Pages.
 
 ## Testing locally
 
