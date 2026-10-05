@@ -1,43 +1,48 @@
 import Clutter from 'gi://Clutter'
-import Gio from 'gi://Gio'
-import GLib from 'gi://GLib'
 import GObject from 'gi://GObject'
 import Meta from 'gi://Meta'
+import Secret from 'gi://Secret'
 import St from 'gi://St'
 
-import { ResultRow, SearchDialog } from './searchDialog.js'
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js'
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js'
 
 const PASSWORD_HINT = 'x-kde-passwordManagerHint'
-const PREVIEW_LENGTH = 220
+const PREVIEW_LENGTH = 70
+const MENU_WIDTH = 420
+const LIST_HEIGHT = 360
 
-function stateFile() {
-  const dir = GLib.build_filenamev([GLib.get_user_data_dir(), 'xiws'])
-  GLib.mkdir_with_parents(dir, 0o700)
-  return GLib.build_filenamev([dir, 'clipboard.json'])
-}
+// the whole list travels as one secret rather than one secret per entry: it
+// keeps the order without an index attribute and costs a single lookup
+const FAVOURITES_SCHEMA = Secret.Schema.new('dev.xi72yow.xiws.Clipboard', Secret.SchemaFlags.NONE, {
+  store: Secret.SchemaAttributeType.STRING,
+})
+const FAVOURITES_ATTRIBUTES = { store: 'favourites' }
+const FAVOURITES_LABEL = 'xiws clipboard favourites'
 
 function collapse(text) {
   const single = text.replace(/\s+/g, ' ').trim()
   return single.length > PREVIEW_LENGTH ? `${single.slice(0, PREVIEW_LENGTH)}…` : single
 }
 
-function describe(text) {
-  const lines = text.split('\n').length
-  const chars = text.length
-  return lines > 1 ? `${chars} Zeichen, ${lines} Zeilen` : `${chars} Zeichen`
-}
-
-// history is kept globally rather than per session for now, the session tag
-// is noted in docs/clipboard.md as an idea
+// the history never reaches the disk. it holds whatever was copied during the
+// session, which on this machine is largely credentials, and a file would
+// carry those into every backup of the home directory. what is meant to last
+// is marked as a favourite and goes into the keyring instead.
 export class ClipboardHistory {
   constructor(settings) {
     this._settings = settings
-    this._entries = this._load()
-    this._selection = global.display.get_selection()
+    this._entries = []
+    this._favourites = []
+    this._lastUsed = null
+    this._onChanged = null
 
+    this._selection = global.display.get_selection()
     this._ownerChangedId = this._selection.connect('owner-changed', (selection, type) => {
       if (type === Meta.SelectionType.SELECTION_CLIPBOARD) this._onClipboardChanged()
     })
+
+    this._loadFavourites()
   }
 
   destroy() {
@@ -45,24 +50,74 @@ export class ClipboardHistory {
       this._selection.disconnect(this._ownerChangedId)
       this._ownerChangedId = 0
     }
+
+    this._entries = []
+    this._onChanged = null
+  }
+
+  connectChanged(callback) {
+    this._onChanged = callback
   }
 
   get entries() {
     return this._entries
   }
 
+  get favourites() {
+    return this._favourites
+  }
+
+  get lastUsed() {
+    return this._lastUsed
+  }
+
+  isFavourite(text) {
+    return this._favourites.some((entry) => entry.text === text)
+  }
+
+  // a favourite keeps its place when picked, only the marker moves. an
+  // ordinary entry travels to the top, since the history is a recency list
   paste(entry) {
     St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, entry.text)
+    this._lastUsed = entry.text
+
+    if (!this.isFavourite(entry.text)) {
+      this._entries = [
+        { text: entry.text, at: Date.now() },
+        ...this._entries.filter((candidate) => candidate.text !== entry.text),
+      ]
+    }
+
+    this._notify()
+  }
+
+  addFavourite(text) {
+    if (this.isFavourite(text)) return
+
+    this._favourites = [...this._favourites, { text, at: Date.now() }]
+    this._entries = this._entries.filter((entry) => entry.text !== text)
+    this._storeFavourites()
+    this._notify()
+  }
+
+  removeFavourite(text) {
+    this._favourites = this._favourites.filter((entry) => entry.text !== text)
+    this._storeFavourites()
+    this._notify()
   }
 
   forget(entry) {
     this._entries = this._entries.filter((candidate) => candidate.text !== entry.text)
-    this._save()
+    this._notify()
   }
 
   clear() {
     this._entries = []
-    this._save()
+    this._notify()
+  }
+
+  _notify() {
+    this._onChanged?.()
   }
 
   _onClipboardChanged() {
@@ -84,6 +139,8 @@ export class ClipboardHistory {
   }
 
   _remember(text) {
+    if (this.isFavourite(text)) return
+
     const limit = Math.max(this._settings.get_int('clipboard-size'), 1)
 
     this._entries = [
@@ -91,77 +148,237 @@ export class ClipboardHistory {
       ...this._entries.filter((entry) => entry.text !== text),
     ].slice(0, limit)
 
-    this._save()
+    this._notify()
   }
 
-  _load() {
-    try {
-      const [ok, bytes] = GLib.file_get_contents(stateFile())
-      if (!ok) return []
+  // the keyring is unlocked with the session, so the lookup only has to be
+  // asynchronous rather than interactive
+  _loadFavourites() {
+    Secret.password_lookup(FAVOURITES_SCHEMA, FAVOURITES_ATTRIBUTES, null, (source, result) => {
+      let raw
+      try {
+        raw = Secret.password_lookup_finish(result)
+      } catch (error) {
+        logError(error, 'xiws: could not read the clipboard favourites')
+        return
+      }
+      if (!raw) return
 
-      const parsed = JSON.parse(new TextDecoder().decode(bytes))
-      return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry?.text === 'string') : []
-    } catch {
-      return []
-    }
+      try {
+        const parsed = JSON.parse(raw)
+        this._favourites = Array.isArray(parsed)
+          ? parsed.filter((entry) => typeof entry?.text === 'string')
+          : []
+      } catch (error) {
+        logError(error, 'xiws: the stored clipboard favourites are not valid json')
+        return
+      }
+
+      this._notify()
+    })
   }
 
-  _save() {
-    try {
-      const file = Gio.File.new_for_path(stateFile())
-      file.replace_contents(
-        new TextEncoder().encode(JSON.stringify(this._entries)),
-        null,
-        false,
-        Gio.FileCreateFlags.PRIVATE,
-        null,
-      )
-    } catch (error) {
-      logError(error, 'xiws: could not write the clipboard history')
-    }
+  _storeFavourites() {
+    Secret.password_store(
+      FAVOURITES_SCHEMA,
+      FAVOURITES_ATTRIBUTES,
+      Secret.COLLECTION_DEFAULT,
+      FAVOURITES_LABEL,
+      JSON.stringify(this._favourites),
+      null,
+      (source, result) => {
+        try {
+          Secret.password_store_finish(result)
+        } catch (error) {
+          logError(error, 'xiws: could not write the clipboard favourites')
+        }
+      },
+    )
   }
 }
 
+// a row carries its own actions, so starring or dropping an entry does not
+// close the menu the way activating it does
 const ClipboardRow = GObject.registerClass(
-  class ClipboardRow extends ResultRow {
-    _init(entry) {
-      super._init(collapse(entry.text), describe(entry.text))
+  {
+    Signals: {
+      picked: {},
+      starred: {},
+      dropped: {},
+    },
+  },
+  class ClipboardRow extends PopupMenu.PopupBaseMenuItem {
+    _init(entry, { favourite, used }) {
+      super._init()
+
       this.entry = entry
+
+      if (used) this.add_style_class_name('xiws-clip-used')
+
+      this.add_child(
+        new St.Icon({
+          icon_name: used ? 'object-select-symbolic' : 'edit-paste-symbolic',
+          style_class: 'popup-menu-icon xiws-clip-mark',
+        }),
+      )
+
+      this.add_child(
+        new St.Label({
+          text: collapse(entry.text),
+          x_expand: true,
+          y_align: Clutter.ActorAlign.CENTER,
+        }),
+      )
+
+      const star = new St.Button({
+        style_class: 'icon-button xiws-clip-action',
+        child: new St.Icon({
+          icon_name: favourite ? 'starred-symbolic' : 'non-starred-symbolic',
+          style_class: 'popup-menu-icon',
+        }),
+        y_align: Clutter.ActorAlign.CENTER,
+      })
+      star.connect('clicked', () => this.emit('starred'))
+      this.add_child(star)
+
+      if (!favourite) {
+        const drop = new St.Button({
+          style_class: 'icon-button xiws-clip-action',
+          child: new St.Icon({
+            icon_name: 'edit-delete-symbolic',
+            style_class: 'popup-menu-icon',
+          }),
+          y_align: Clutter.ActorAlign.CENTER,
+        })
+        drop.connect('clicked', () => this.emit('dropped'))
+        this.add_child(drop)
+      }
+    }
+
+    activate(event) {
+      this.emit('picked')
+      super.activate(event)
     }
   },
 )
 
-export const ClipboardPicker = GObject.registerClass(
-  class ClipboardPicker extends SearchDialog {
+// a panel button rather than a centred dialog: the list belongs next to the
+// indicator it hangs off, the way the shell places its own menus
+export const ClipboardIndicator = GObject.registerClass(
+  class ClipboardIndicator extends PanelMenu.Button {
     _init(history) {
-      super._init({ hint: 'Zwischenablage' })
+      super._init(0.5, 'xiws clipboard')
+
       this._history = history
+      this._history.connectChanged(() => {
+        if (this.menu.isOpen) this._render()
+      })
+
+      this.add_child(
+        new St.Icon({ icon_name: 'edit-paste-symbolic', style_class: 'system-status-icon' }),
+      )
+
+      this._searchEntry = new St.Entry({
+        style_class: 'search-entry xiws-clip-search',
+        hint_text: 'Zwischenablage',
+        can_focus: true,
+        x_expand: true,
+      })
+      this._searchEntry.clutter_text.connect('text-changed', () => this._render())
+
+      const search = new PopupMenu.PopupBaseMenuItem({ reactive: false, can_focus: false })
+      search.add_child(this._searchEntry)
+      this.menu.addMenuItem(search)
+
+      this._section = new PopupMenu.PopupMenuSection()
+
+      this._scrollView = new St.ScrollView({
+        style_class: 'xiws-clip-list',
+        overlay_scrollbars: true,
+        y_expand: true,
+      })
+      this._scrollView.add_child(this._section.actor)
+
+      const list = new PopupMenu.PopupBaseMenuItem({ reactive: false, can_focus: false })
+      list.add_child(this._scrollView)
+      this.menu.addMenuItem(list)
+
+      this.menu.box.set_width(MENU_WIDTH)
+      this._scrollView.set_height(LIST_HEIGHT)
+
+      this.menu.connect('open-state-changed', (menu, open) => {
+        if (!open) return
+
+        this._searchEntry.set_text('')
+        this._render()
+        global.stage.set_key_focus(this._searchEntry.clutter_text)
+      })
     }
 
-    handleRowKey(row, symbol) {
-      if (symbol !== Clutter.KEY_Delete && symbol !== Clutter.KEY_KP_Delete) {
-        return Clutter.EVENT_PROPAGATE
-      }
-
-      this._history.forget(row.entry)
-      this.render()
-      return Clutter.EVENT_STOP
+    toggle() {
+      this.menu.toggle()
     }
 
-    render() {
-      this.clearRows()
+    _render() {
+      this._section.removeAll()
 
-      const needle = this.needle
-      const entries = needle
-        ? this._history.entries.filter((entry) => entry.text.toLowerCase().includes(needle))
-        : this._history.entries
+      const needle = this._searchEntry.get_text().trim().toLowerCase()
+      const matches = (entry) => !needle || entry.text.toLowerCase().includes(needle)
 
-      for (const entry of entries) {
-        this.addRow(new ClipboardRow(entry), () => {
-          this.close(global.get_current_time())
-          this._history.paste(entry)
-        })
+      const favourites = this._history.favourites.filter(matches)
+      const entries = this._history.entries.filter(matches)
+
+      if (favourites.length > 0) {
+        this._addHeading('Favoriten')
+        for (const entry of favourites) this._addRow(entry, true)
       }
+
+      if (entries.length > 0) {
+        if (favourites.length > 0) this._addSeparator()
+        this._addHeading('Verlauf')
+        for (const entry of entries) this._addRow(entry, false)
+      }
+
+      if (favourites.length === 0 && entries.length === 0) {
+        const empty = new PopupMenu.PopupMenuItem(
+          needle ? 'Nichts gefunden' : 'Noch nichts kopiert',
+        )
+        empty.setSensitive(false)
+        this._section.addMenuItem(empty)
+      }
+    }
+
+    _addHeading(text) {
+      const heading = new PopupMenu.PopupMenuItem(text, { reactive: false, can_focus: false })
+      heading.add_style_class_name('xiws-clip-heading')
+      this._section.addMenuItem(heading)
+    }
+
+    _addSeparator() {
+      this._section.addMenuItem(new PopupMenu.PopupSeparatorMenuItem())
+    }
+
+    _addRow(entry, favourite) {
+      const row = new ClipboardRow(entry, {
+        favourite,
+        used: this._history.lastUsed === entry.text,
+      })
+
+      row.connect('picked', () => this._history.paste(entry))
+      row.connect('starred', () => {
+        if (favourite) {
+          this._history.removeFavourite(entry.text)
+        } else {
+          this._history.addFavourite(entry.text)
+        }
+        this._render()
+      })
+      row.connect('dropped', () => {
+        this._history.forget(entry)
+        this._render()
+      })
+
+      this._section.addMenuItem(row)
     }
   },
 )

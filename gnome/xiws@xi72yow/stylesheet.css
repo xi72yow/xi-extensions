@@ -89,6 +89,35 @@
   border-radius: 6px;
 }
 
+.xiws-clip-search {
+  width: auto;
+  margin: 0;
+}
+
+.xiws-clip-list {
+  margin: 0;
+}
+
+.xiws-clip-heading {
+  font-weight: 700;
+}
+
+/* the mark column keeps a fixed width so the labels line up whether or not a
+   row is the one that was pasted last */
+.xiws-clip-mark {
+  width: 16px;
+  margin-right: 6px;
+}
+
+.xiws-clip-used {
+  font-weight: 700;
+}
+
+.xiws-clip-action {
+  padding: 2px;
+  margin-left: 4px;
+}
+
 /* fill and border come from tile-preview, the class the shell uses for its
    own snap indicator, so this follows the accent colour */
 .xiws-snap-preview {

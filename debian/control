@@ -12,6 +12,7 @@ Rules-Requires-Root: no
 Package: gnome-shell-extension-xiws
 Architecture: all
 Depends: ${misc:Depends},
+         gir1.2-secret-1,
          gnome-shell (>= 48~),
          gnome-shell (<< 49~)
 Recommends: ddcutil

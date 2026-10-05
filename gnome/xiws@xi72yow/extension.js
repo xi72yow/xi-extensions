@@ -12,7 +12,7 @@ import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js'
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js'
 
 import { ResultRow, SearchDialog } from './lib/searchDialog.js'
-import { ClipboardHistory, ClipboardPicker } from './lib/clipboard.js'
+import { ClipboardHistory, ClipboardIndicator } from './lib/clipboard.js'
 import { BrightnessController, BrightnessIndicator } from './lib/brightness.js'
 
 const TOGGLE_PICKER = 'toggle-picker'
@@ -1464,8 +1464,9 @@ export default class XiwsExtension extends Extension {
     this._snapAssist = new SnapAssist(this._settings)
 
     this._clipboard = new ClipboardHistory(this._settings)
-    this._clipboardPicker = new ClipboardPicker(this._clipboard)
-    this._bind(TOGGLE_CLIPBOARD, () => this._clipboardPicker.toggle())
+    this._clipboardIndicator = new ClipboardIndicator(this._clipboard)
+    Main.panel.addToStatusArea('xiws-clipboard', this._clipboardIndicator, 0, 'right')
+    this._bind(TOGGLE_CLIPBOARD, () => this._clipboardIndicator.toggle())
 
     this._brightness = new BrightnessController(this._settings)
     this._brightnessIndicator = new BrightnessIndicator(this._brightness, this._settings)
@@ -1501,8 +1502,8 @@ export default class XiwsExtension extends Extension {
     this._brightness?.destroy()
     this._brightness = null
 
-    this._clipboardPicker?.destroy()
-    this._clipboardPicker = null
+    this._clipboardIndicator?.destroy()
+    this._clipboardIndicator = null
     this._clipboard?.destroy()
     this._clipboard = null
 

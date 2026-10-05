@@ -43,7 +43,9 @@ export default [
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
-      globals: globals.node,
+      // the import script runs under gjs rather than node, which brings its
+      // own print and ARGV alongside the shared text codecs
+      globals: { ...globals.node, print: 'readonly', ARGV: 'readonly' },
     },
   },
 ]
