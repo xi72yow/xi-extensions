@@ -188,9 +188,10 @@ class DisplayControl {
 // that makes it the one way further down once ddc/ci sits at the minimum of
 // the monitor, and a poor substitute for it above that.
 class SignalDimming {
-  constructor() {
+  constructor(onChanged) {
     this._proxy = null
     this._connectors = []
+    this._onChanged = onChanged
 
     try {
       this._proxy = Gio.DBusProxy.new_for_bus_sync(
@@ -208,6 +209,27 @@ class SignalDimming {
     }
 
     this._readConnectors()
+
+    // the extension loads early, and mutter fills this property once the
+    // monitor configuration is up. reading it only in the constructor left the
+    // list empty for the whole session, so changes are followed.
+    this._propertiesId = this._proxy.connect('g-properties-changed', () => {
+      const had = this.available
+
+      this._connectors = []
+      this._readConnectors()
+
+      // a connector arriving late also has to receive the stored value, the
+      // caller reapplies it from here
+      if (had !== this.available) this._onChanged?.()
+    })
+  }
+
+  destroy() {
+    if (this._propertiesId) {
+      this._proxy.disconnect(this._propertiesId)
+      this._propertiesId = 0
+    }
   }
 
   get available() {
@@ -270,7 +292,7 @@ export class BrightnessController extends Signals.EventEmitter {
     this._settings = settings
     this._displays = new DisplayControl(BRIGHTNESS_VCP, 'brightness')
     this._contrast = new DisplayControl(CONTRAST_VCP, 'contrast')
-    this._signal = new SignalDimming()
+    this._signal = new SignalDimming(() => this._applySignal())
     this._sky = new SkyLight(settings)
     this._manual = null
     this._target = null
@@ -310,6 +332,7 @@ export class BrightnessController extends Signals.EventEmitter {
     this._sky.destroy()
     this._displays.destroy()
     this._contrast.destroy()
+    this._signal.destroy()
 
     // the shell keeps the luminance after the extension goes, so an unloaded
     // extension would leave the screen dimmed with no way to undo it
@@ -580,13 +603,11 @@ const BrightnessItem = GObject.registerClass(
       // they are set once and left alone, unlike the brightness above them
       this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem())
 
-      if (controller.canDimSignal) {
-        this._signalItem = new MenuSlider('Signal dimmen', (value) =>
-          settings.set_int('brightness-signal', clampPercent(value)),
-        )
-        this._signalItem.setValue(settings.get_int('brightness-signal'))
-        this.menu.addMenuItem(this._signalItem)
-      }
+      this._signalItem = new MenuSlider('Signal dimmen', (value) =>
+        settings.set_int('brightness-signal', clampPercent(value)),
+      )
+      this._signalItem.setValue(settings.get_int('brightness-signal'))
+      this.menu.addMenuItem(this._signalItem)
 
       this._contrastItem = new MenuSlider('Kontrast', (value) =>
         controller.setContrast(clampPercent(value)),
@@ -647,7 +668,10 @@ const BrightnessItem = GObject.registerClass(
       this.slider.unblock_signal_handler(this._sliderChangedId)
 
       this._autoItem.setToggleState(controller.auto)
-      this._signalItem?.setValue(controller.signal)
+
+      // availability can arrive after the menu was built, see SignalDimming
+      this._signalItem.visible = controller.canDimSignal
+      this._signalItem.setValue(controller.signal)
       this.menu.setHeader(ICON_NAME, 'Bildschirmhelligkeit', this._describe())
     }
 
