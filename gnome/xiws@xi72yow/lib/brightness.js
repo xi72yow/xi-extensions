@@ -31,6 +31,10 @@ const PERSIST_DELAY_MS = 500
 // the writes are therefore throttled, and the value under the hand when it
 // lets go is always written.
 const SLIDER_THROTTLE_MS = 400
+// signal dimming at zero turns the screen black, and with it the slider that
+// would undo it. the lower end of the range is therefore a floor rather than
+// zero, and the slider maps its full travel onto what is left.
+const LUMINANCE_FLOOR = 15
 
 function isCancelled(error) {
   return error instanceof GLib.Error && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)
@@ -38,6 +42,18 @@ function isCancelled(error) {
 
 function clampPercent(value) {
   return Math.min(Math.max(Math.round(value), 0), 100)
+}
+
+// the slider runs 0 to 100 while the luminance only ever leaves the floor to
+// 100, so the two are mapped onto each other instead of clipping the lower end
+function fromSliderTravel(value) {
+  const share = clampPercent(value) / 100
+  return Math.round(LUMINANCE_FLOOR + (100 - LUMINANCE_FLOOR) * share)
+}
+
+function toSliderTravel(percent) {
+  const bounded = Math.max(clampPercent(percent), LUMINANCE_FLOOR)
+  return ((bounded - LUMINANCE_FLOOR) / (100 - LUMINANCE_FLOOR)) * 100
 }
 
 async function ddcutil(args, cancellable) {
@@ -192,17 +208,26 @@ class SignalDimming {
     this._proxy = null
     this._connectors = []
     this._onChanged = onChanged
+    this._propertiesId = 0
 
+    // the proxy has to be built asynchronously: gnome-shell is itself the
+    // service behind org.gnome.Mutter.DisplayConfig, and a synchronous call
+    // blocks the very loop that would have to answer it
+    Gio.DBusProxy.new_for_bus(
+      Gio.BusType.SESSION,
+      Gio.DBusProxyFlags.NONE,
+      null,
+      'org.gnome.Mutter.DisplayConfig',
+      '/org/gnome/Mutter/DisplayConfig',
+      'org.gnome.Mutter.DisplayConfig',
+      null,
+      (source, result) => this._adopt(result),
+    )
+  }
+
+  _adopt(result) {
     try {
-      this._proxy = Gio.DBusProxy.new_for_bus_sync(
-        Gio.BusType.SESSION,
-        Gio.DBusProxyFlags.NONE,
-        null,
-        'org.gnome.Mutter.DisplayConfig',
-        '/org/gnome/Mutter/DisplayConfig',
-        'org.gnome.Mutter.DisplayConfig',
-        null,
-      )
+      this._proxy = Gio.DBusProxy.new_for_bus_finish(result)
     } catch (error) {
       logError(error, 'xiws: no display config proxy, signal dimming unavailable')
       return
@@ -211,8 +236,7 @@ class SignalDimming {
     this._readConnectors()
 
     // the extension loads early, and mutter fills this property once the
-    // monitor configuration is up. reading it only in the constructor left the
-    // list empty for the whole session, so changes are followed.
+    // monitor configuration is up, so changes are followed
     this._propertiesId = this._proxy.connect('g-properties-changed', () => {
       const had = this.available
 
@@ -223,6 +247,8 @@ class SignalDimming {
       // caller reapplies it from here
       if (had !== this.available) this._onChanged?.()
     })
+
+    if (this.available) this._onChanged?.()
   }
 
   destroy() {
@@ -359,7 +385,7 @@ export class BrightnessController extends Signals.EventEmitter {
   }
 
   _applySignal() {
-    const percent = this.signal
+    const percent = Math.max(this.signal, LUMINANCE_FLOOR)
     if (percent >= 100) {
       this._signal.reset()
     } else {
@@ -604,9 +630,9 @@ const BrightnessItem = GObject.registerClass(
       this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem())
 
       this._signalItem = new MenuSlider('Signal dimmen', (value) =>
-        settings.set_int('brightness-signal', clampPercent(value)),
+        settings.set_int('brightness-signal', fromSliderTravel(value)),
       )
-      this._signalItem.setValue(settings.get_int('brightness-signal'))
+      this._signalItem.setValue(toSliderTravel(settings.get_int('brightness-signal')))
       this.menu.addMenuItem(this._signalItem)
 
       this._contrastItem = new MenuSlider('Kontrast', (value) =>
@@ -671,7 +697,7 @@ const BrightnessItem = GObject.registerClass(
 
       // availability can arrive after the menu was built, see SignalDimming
       this._signalItem.visible = controller.canDimSignal
-      this._signalItem.setValue(controller.signal)
+      this._signalItem.setValue(toSliderTravel(controller.signal))
       this.menu.setHeader(ICON_NAME, 'Bildschirmhelligkeit', this._describe())
     }
 

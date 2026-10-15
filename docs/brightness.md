@@ -96,7 +96,11 @@ Each line names its cause: `key`, `slider`, `menu` for the contrast slider, `set
 
 What it does not do is dim the backlight. Black stays as bright as it was, contrast drops and the panel keeps drawing the same power, which is the opposite of what dimming is wanted for in a dark room. That makes it a poor substitute for DDC/CI, and a good addition below it: the monitor on this machine sits at 0 of 50 and cannot go darker, which is exactly the gap this closes.
 
-It is therefore a second slider in the menu of the quick settings tile rather than the main control, kept in `brightness-signal`. Mutter forgets the luminance across a restart, so the stored value is put back on start, and `disable` resets it, since a screen left dimmed by an unloaded extension could not be undone through the interface.
+It is therefore a second slider in the menu of the quick settings tile rather than the main control, kept in `brightness-signal`.
+
+**Zero is not reachable.** A luminance of 0 turns the screen black, and with it the slider that would take it back, so the value never goes below `LUMINANCE_FLOOR`, currently 15. The slider still travels its full length: its range is mapped onto the floor to 100 rather than clipped at the lower end, which keeps the whole width usable instead of wasting the first seventh of it on values that are refused. **The proxy has to be asynchronous.** `gnome-shell` is itself the service behind `org.gnome.Mutter.DisplayConfig`, so a synchronous proxy asks its own process and blocks the loop that would have to answer. The proxy came up but without cached properties, `get_cached_property('Luminance')` returned null, and the slider was never shown. A test from a separate process did not reproduce it for exactly that reason.
+
+Mutter forgets the luminance across a restart, so the stored value is put back on start, and `disable` resets it, since a screen left dimmed by an unloaded extension could not be undone through the interface.
 
 `SetBacklight` exists alongside it and would be the better path, except the `Backlight` property is empty on this machine, so mutter sees no backlight it could drive.
 
