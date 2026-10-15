@@ -84,11 +84,6 @@
       <summary>Shift applied on top of the daylight curve, in percent</summary>
       <description>Set through the keys and the slider while the automatic mode is on, so a manual correction carries through the day.</description>
     </key>
-    <key name="brightness-signal" type="i">
-      <default>100</default>
-      <summary>Signal level dimming in percent, 100 leaves the output untouched</summary>
-      <description>Applied through mutter rather than the monitor, so it costs no write cycle but lowers the output values instead of the backlight. Useful below the minimum brightness of the monitor.</description>
-    </key>
     <key name="search-depth" type="i">
       <default>3</default>
       <summary>How many directory levels below a search path are scanned</summary>

@@ -92,6 +92,12 @@ Each line names its cause: `key`, `slider`, `menu` for the contrast slider, `set
 
 `ddcutil` 2.2 verifies every write by reading it back, and `--noverify` conflicts with that default in the tested build. A write thus takes around 0.2 s.
 
+**The two layers are distributed rather than switched between.** Perceived brightness is roughly the product of the panel and the signal, so one target splits into both: the monitor takes the coarse step above the target, the luminance makes up the difference. The steps are relative, each a tenth below the last, which keeps the luminance between 90 and 100 across the whole range. Fixed steps were tried first and fell apart at the bottom, where a target of 6 left the luminance at 60 and the colour depth with it.
+
+Two things follow from that. A correction inside one step writes nothing to the monitor at all, which is where most of the saving comes from. And below the lowest step the monitor sits at its minimum while the luminance carries alone, down to `LUMINANCE_FLOOR`, which is the only way further down.
+
+The split is shown in the menu as figures with icons: the panel, the signal where it is below 100, and the irradiance while the automatic mode runs. The mark on the slider rail, drawn through the `overdrive-start` separator of `BarLevel`, shows where the monitor stops, but it cannot name the split and it disappears below the lowest step, which is why the figures carry it.
+
 **Dimming at signal level sits in the menu.** Mutter 48 exposes `SetLuminance(connector, color_mode, value)` and `ResetLuminance` on `org.gnome.Mutter.DisplayConfig`, which lower the output values without touching the monitor at all, so without any write cycle and without the 0.2 s a DDC/CI write costs. The connector shows up there as unset at 100.
 
 What it does not do is dim the backlight. Black stays as bright as it was, contrast drops and the panel keeps drawing the same power, which is the opposite of what dimming is wanted for in a dark room. That makes it a poor substitute for DDC/CI, and a good addition below it: the monitor on this machine sits at 0 of 50 and cannot go darker, which is exactly the gap this closes.
@@ -104,4 +110,6 @@ Mutter forgets the luminance across a restart, so the stored value is put back o
 
 `SetBacklight` exists alongside it and would be the better path, except the `Backlight` property is empty on this machine, so mutter sees no backlight it could drive.
 
-**Contrast shares the slider and the throttle.** `DisplayControl` carries the VCP code, so `0x12` reuses the write path, the collapsing of pending targets and the throttle unchanged. It is read from the monitor when the menu is built rather than stored, since unlike the luminance it survives in the monitor itself. Its journal lines read `contrast` where brightness reads `brightness`.
+**Contrast shares the write path but not the throttle.** `DisplayControl` carries the VCP code, so `0x12` reuses the writing, the collapsing of pending targets and the detection unchanged. It is read from the monitor when the menu is built rather than stored, since unlike the luminance it survives in the monitor itself. Its journal lines read `contrast` where brightness reads `brightness`.
+
+Where the brightness throttles during a drag, the contrast writes only once the hand lets go. It has no second layer to interpolate over, so every intermediate value would be a write cycle for a setting that is adjusted deliberately and rarely. Keys and scrolling act at once, as everywhere else, since they are single steps rather than a stream.

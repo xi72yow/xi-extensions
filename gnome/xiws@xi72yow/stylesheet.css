@@ -163,3 +163,19 @@
 .xiws-menu-slider {
   spacing: 6px;
 }
+
+/* the separator marks where the monitor stops carrying the brightness, see
+   the split in brightness.js. one pixel is the shell default and too faint
+   for a mark that is meant to be read. */
+.xiws-split-slider {
+  -barlevel-overdrive-separator-width: 3px;
+}
+
+/* the two figures the brightness is made of, panel and signal */
+.xiws-split-row {
+  spacing: 18px;
+}
+
+.xiws-split-pair {
+  spacing: 6px;
+}

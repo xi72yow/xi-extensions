@@ -35,6 +35,17 @@ const SLIDER_THROTTLE_MS = 400
 // would undo it. the lower end of the range is therefore a floor rather than
 // zero, and the slider maps its full travel onto what is left.
 const LUMINANCE_FLOOR = 15
+// the two layers multiply rather than take turns: the monitor carries the
+// coarse steps, the luminance fills in between them. a correction that stays
+// inside one step writes nothing to the monitor at all.
+//
+// the steps are relative rather than fixed, each one a tenth below the last.
+// with fixed steps the lowest ones are relatively coarse, and at a target of
+// 6 the luminance fell to 60 with the colour depth behind it. this way it
+// stays between the ratio and 100 across the whole range.
+const DDC_STEP_RATIO = 0.9
+// below this the monitor is at its minimum and the luminance carries alone
+const DDC_MIN_PERCENT = 5
 
 function isCancelled(error) {
   return error instanceof GLib.Error && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)
@@ -44,16 +55,23 @@ function clampPercent(value) {
   return Math.min(Math.max(Math.round(value), 0), 100)
 }
 
-// the slider runs 0 to 100 while the luminance only ever leaves the floor to
-// 100, so the two are mapped onto each other instead of clipping the lower end
-function fromSliderTravel(value) {
-  const share = clampPercent(value) / 100
-  return Math.round(LUMINANCE_FLOOR + (100 - LUMINANCE_FLOOR) * share)
-}
+// one target splits into a coarse monitor step and the luminance that makes up
+// the difference. below the lowest step the monitor is at its minimum and the
+// luminance carries the rest alone, which is the only way further down.
+function distribute(target) {
+  const wanted = clampPercent(target)
 
-function toSliderTravel(percent) {
-  const bounded = Math.max(clampPercent(percent), LUMINANCE_FLOOR)
-  return ((bounded - LUMINANCE_FLOOR) / (100 - LUMINANCE_FLOOR)) * 100
+  if (wanted >= DDC_MIN_PERCENT) {
+    const steps = Math.floor(Math.log(wanted / 100) / Math.log(DDC_STEP_RATIO))
+    const ddc = Math.min(100 * DDC_STEP_RATIO ** steps, 100)
+
+    if (ddc >= DDC_MIN_PERCENT) {
+      return { ddc: Math.round(ddc), luminance: clampPercent((wanted / ddc) * 100) }
+    }
+  }
+
+  const share = Math.min(wanted / DDC_MIN_PERCENT, 1)
+  return { ddc: 0, luminance: Math.round(LUMINANCE_FLOOR + (100 - LUMINANCE_FLOOR) * share) }
 }
 
 async function ddcutil(args, cancellable) {
@@ -209,6 +227,7 @@ class SignalDimming {
     this._connectors = []
     this._onChanged = onChanged
     this._propertiesId = 0
+    this._applied = null
 
     // the proxy has to be built asynchronously: gnome-shell is itself the
     // service behind org.gnome.Mutter.DisplayConfig, and a synchronous call
@@ -282,11 +301,20 @@ class SignalDimming {
     }
   }
 
-  set(percent) {
-    if (!this._proxy) return
+  // writing the same value again would bounce back through the property
+  // change and start the whole round over
+  apply(percent) {
+    const bounded = Math.max(Math.min(percent, 100), LUMINANCE_FLOOR)
+    if (bounded === this._applied) return
+
+    this._applied = bounded
+    if (bounded >= 100) {
+      this.reset()
+      return
+    }
 
     for (const { connector, mode } of this._connectors) {
-      this._call('SetLuminance', new GLib.Variant('(sud)', [connector, mode, percent]))
+      this._call('SetLuminance', new GLib.Variant('(sud)', [connector, mode, bounded]))
     }
   }
 
@@ -324,6 +352,7 @@ export class BrightnessController extends Signals.EventEmitter {
     this._target = null
     this._offset = settings.get_int('brightness-offset')
     this._persistId = 0
+    this._split = null
 
     this._skyChangedId = this._sky.connect('changed', () =>
       this._apply({ settle: true, cause: 'weather' }),
@@ -338,9 +367,6 @@ export class BrightnessController extends Signals.EventEmitter {
         this._offset = settings.get_int('brightness-offset')
         this._apply()
       }),
-    )
-    this._settingsIds.push(
-      settings.connect('changed::brightness-signal', () => this._applySignal()),
     )
     this._tickId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, CURVE_TICK_SECONDS, () => {
       this._apply({ settle: true, cause: 'drift' })
@@ -369,10 +395,6 @@ export class BrightnessController extends Signals.EventEmitter {
     return this._signal.available
   }
 
-  get signal() {
-    return this._settings.get_int('brightness-signal')
-  }
-
   // read from the monitor rather than stored: unlike the luminance it survives
   // in the monitor itself, so the slider should start where the hardware is
   async contrast() {
@@ -384,14 +406,13 @@ export class BrightnessController extends Signals.EventEmitter {
     this._contrast.moveTo(clampPercent(percent) / 100, 'menu')
   }
 
-  _applySignal() {
-    const percent = Math.max(this.signal, LUMINANCE_FLOOR)
-    if (percent >= 100) {
-      this._signal.reset()
-    } else {
-      this._signal.set(percent)
-    }
+  // the split is what the slider draws its second mark from
+  get split() {
+    return this._split
+  }
 
+  _applySignal() {
+    if (this._split) this._signal.apply(this._split.luminance)
     this.emit('changed')
   }
 
@@ -481,7 +502,11 @@ export class BrightnessController extends Signals.EventEmitter {
       // the weather data holds the brightness where it is instead of jumping
       this._manual = target
 
-      this._displays.moveTo(target / 100, cause)
+      const split = distribute(target)
+      this._split = split
+
+      this._displays.moveTo(split.ddc / 100, cause)
+      this._signal.apply(split.luminance)
     }
 
     // emitted either way, the menu shows the irradiance as it moves
@@ -509,9 +534,76 @@ export class BrightnessController extends Signals.EventEmitter {
   }
 }
 
+// open-meteo is asked for irradiance alone, so the symbol is derived from it
+// rather than from a weather code. that also keeps it honest: it shows what
+// the control actually reacts to.
+function skyIcon(radiation) {
+  if (radiation < 20) return 'weather-clear-night-symbolic'
+  if (radiation < 150) return 'weather-overcast-symbolic'
+  if (radiation < 450) return 'weather-few-clouds-symbolic'
+  return 'weather-clear-symbolic'
+}
+
+// how the brightness is made up, as figures rather than a sentence: the panel
+// of the monitor, the signal on top of it and the irradiance behind both. the
+// mark on the slider rail cannot say this, and below the lowest step of the
+// monitor it vanishes altogether, which is exactly where the signal carries
+// alone.
+const SplitRow = GObject.registerClass(
+  class SplitRow extends PopupMenu.PopupBaseMenuItem {
+    _init() {
+      super._init({ reactive: false, can_focus: false })
+
+      const box = new St.BoxLayout({ x_expand: true, style_class: 'xiws-split-row' })
+
+      // mutter brings no icon of its own, and the luminance belongs to its
+      // colour handling, which is what the colour symbol stands for
+      this._panel = this._pair('video-display-symbolic', box)
+      this._signal = this._pair('preferences-color-symbolic', box)
+      this._sky = this._pair('weather-clear-symbolic', box)
+
+      this.add_child(box)
+    }
+
+    _pair(iconName, box) {
+      const group = new St.BoxLayout({ style_class: 'xiws-split-pair' })
+      const icon = new St.Icon({ icon_name: iconName, style_class: 'popup-menu-icon' })
+      group.add_child(icon)
+
+      const label = new St.Label({ text: '', y_align: Clutter.ActorAlign.CENTER })
+      group.add_child(label)
+      box.add_child(group)
+
+      return { group, icon, label }
+    }
+
+    setSplit(split, radiation) {
+      this.visible = split !== null
+      if (!split) return
+
+      // at the minimum of the monitor there is no percentage to name, the
+      // dash says so without pretending to a number
+      this._panel.label.text = split.ddc > 0 ? `${split.ddc} %` : '–'
+
+      // a luminance of 100 adds nothing, so it is left out rather than shown
+      // as a figure that carries no information
+      this._signal.label.text = `${split.luminance} %`
+      this._signal.group.visible = split.luminance < 100
+
+      this._sky.group.visible = radiation !== null
+      if (radiation === null) return
+
+      this._sky.icon.icon_name = skyIcon(radiation)
+      this._sky.label.text = `${Math.round(radiation)} W/m²`
+    }
+  },
+)
+
 // the shell dropped PopupSliderMenuItem, so a row with a label above a slider
-// is assembled from the parts. the throttle is the same one the quick slider
-// uses, since every one of these writes to the monitor as well.
+// is assembled from the parts. unlike the brightness above it this one writes
+// only once the hand lets go: contrast has no second layer to interpolate
+// over, so every intermediate value would be a write cycle on the monitor for
+// a setting that is adjusted deliberately and rarely.
 const MenuSlider = GObject.registerClass(
   class MenuSlider extends PopupMenu.PopupBaseMenuItem {
     _init(label, onChange) {
@@ -519,8 +611,6 @@ const MenuSlider = GObject.registerClass(
 
       this._onChange = onChange
       this._dragging = false
-      this._throttleId = 0
-      this._pending = null
 
       const box = new St.BoxLayout({
         vertical: true,
@@ -531,13 +621,16 @@ const MenuSlider = GObject.registerClass(
 
       this.slider = new Slider(0)
       this.slider.accessible_name = label
-      this._changedId = this.slider.connect('notify::value', () => this._moved())
+      this._changedId = this.slider.connect('notify::value', () => {
+        // keys and scrolling are single steps and act at once, a drag is a
+        // stream and waits for its end
+        if (!this._dragging) this._onChange(this.slider.value * 100)
+      })
       this.slider.connect('drag-begin', () => {
         this._dragging = true
       })
       this.slider.connect('drag-end', () => {
         this._dragging = false
-        this._stopThrottle()
         this._onChange(this.slider.value * 100)
       })
 
@@ -549,44 +642,6 @@ const MenuSlider = GObject.registerClass(
       this.slider.block_signal_handler(this._changedId)
       this.slider.value = percent / 100
       this.slider.unblock_signal_handler(this._changedId)
-    }
-
-    _moved() {
-      const value = this.slider.value * 100
-
-      if (!this._dragging) {
-        this._onChange(value)
-        return
-      }
-
-      if (this._throttleId) {
-        this._pending = value
-        return
-      }
-
-      this._onChange(value)
-      this._throttleId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SLIDER_THROTTLE_MS, () => {
-        this._throttleId = 0
-        if (this._pending === null) return GLib.SOURCE_REMOVE
-
-        const pending = this._pending
-        this._pending = null
-        this._onChange(pending)
-        return GLib.SOURCE_REMOVE
-      })
-    }
-
-    _stopThrottle() {
-      if (this._throttleId) {
-        GLib.Source.remove(this._throttleId)
-        this._throttleId = 0
-      }
-      this._pending = null
-    }
-
-    destroy() {
-      this._stopThrottle()
-      super.destroy()
     }
   },
 )
@@ -602,6 +657,7 @@ const BrightnessItem = GObject.registerClass(
       this._pending = null
 
       this.slider.accessible_name = 'Bildschirmhelligkeit'
+      this.slider.add_style_class_name('xiws-split-slider')
 
       this._sliderChangedId = this.slider.connect('notify::value', () => this._onSliderMoved())
       this.slider.connect('drag-begin', () => {
@@ -625,15 +681,12 @@ const BrightnessItem = GObject.registerClass(
       )
       this.menu.addMenuItem(this._autoItem)
 
+      this._splitRow = new SplitRow()
+      this.menu.addMenuItem(this._splitRow)
+
       // both of these sit in the menu rather than in the quick settings grid:
       // they are set once and left alone, unlike the brightness above them
       this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem())
-
-      this._signalItem = new MenuSlider('Signal dimmen', (value) =>
-        settings.set_int('brightness-signal', fromSliderTravel(value)),
-      )
-      this._signalItem.setValue(toSliderTravel(settings.get_int('brightness-signal')))
-      this.menu.addMenuItem(this._signalItem)
 
       this._contrastItem = new MenuSlider('Kontrast', (value) =>
         controller.setContrast(clampPercent(value)),
@@ -696,8 +749,11 @@ const BrightnessItem = GObject.registerClass(
       this._autoItem.setToggleState(controller.auto)
 
       // availability can arrive after the menu was built, see SignalDimming
-      this._signalItem.visible = controller.canDimSignal
-      this._signalItem.setValue(toSliderTravel(controller.signal))
+      // the separator of BarLevel marks where the monitor stops and the
+      // luminance takes over. the step always sits above the target, so the
+      // red overdrive colouring never kicks in, only the mark is drawn.
+      this.slider.overdriveStart = controller.split ? controller.split.ddc / 100 : 1
+      this._splitRow.setSplit(controller.split, controller.auto ? controller.radiation : null)
       this.menu.setHeader(ICON_NAME, 'Bildschirmhelligkeit', this._describe())
     }
 
@@ -706,8 +762,8 @@ const BrightnessItem = GObject.registerClass(
       if (!controller.auto) return 'Manuell'
       if (!controller.hasLocation) return 'Kein Standort gesetzt'
 
-      const radiation = controller.radiation
-      return radiation === null ? 'Keine Wetterdaten' : `Tageslicht ${Math.round(radiation)} W/m²`
+      // the irradiance moved into the row of figures below
+      return controller.radiation === null ? 'Keine Wetterdaten' : 'Automatisch'
     }
 
     destroy() {
