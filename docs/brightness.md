@@ -88,10 +88,16 @@ journalctl --user -b | grep 'xiws: brightness'
 journalctl --user --since today | grep -c 'xiws: brightness'
 ```
 
-Each line names its cause: `key`, `slider`, `settings`, `start`, `weather` for a fresh Open-Meteo response and `drift` for the minute tick, followed by the irradiance whenever the curve set the target.
+Each line names its cause: `key`, `slider`, `menu` for the contrast slider, `settings`, `start`, `weather` for a fresh Open-Meteo response and `drift` for the minute tick, followed by the irradiance whenever the curve set the target.
 
 `ddcutil` 2.2 verifies every write by reading it back, and `--noverify` conflicts with that default in the tested build. A write thus takes around 0.2 s.
 
-**Dimming at signal level is possible and deliberately not used.** Mutter 48 exposes `SetLuminance(connector, color_mode, value)` and `ResetLuminance` on `org.gnome.Mutter.DisplayConfig`, which lower the output values without touching the monitor at all, so without any write cycle and without the 0.2 s a DDC/CI write costs. The connector shows up there as unset at 100.
+**Dimming at signal level sits in the menu.** Mutter 48 exposes `SetLuminance(connector, color_mode, value)` and `ResetLuminance` on `org.gnome.Mutter.DisplayConfig`, which lower the output values without touching the monitor at all, so without any write cycle and without the 0.2 s a DDC/CI write costs. The connector shows up there as unset at 100.
 
-What it does not do is dim the backlight. Black stays as bright as it was, contrast drops and the panel keeps drawing the same power, which is the opposite of what dimming is wanted for in a dark room. It would fit as live feedback during a drag, with the DDC/CI write following on release, but the two would not agree on what a given percentage looks like and the picture would jump at the end of every drag. `SetBacklight` exists alongside it and would be the better path, except the `Backlight` property is empty on this machine, so mutter sees no backlight it could drive.
+What it does not do is dim the backlight. Black stays as bright as it was, contrast drops and the panel keeps drawing the same power, which is the opposite of what dimming is wanted for in a dark room. That makes it a poor substitute for DDC/CI, and a good addition below it: the monitor on this machine sits at 0 of 50 and cannot go darker, which is exactly the gap this closes.
+
+It is therefore a second slider in the menu of the quick settings tile rather than the main control, kept in `brightness-signal`. Mutter forgets the luminance across a restart, so the stored value is put back on start, and `disable` resets it, since a screen left dimmed by an unloaded extension could not be undone through the interface.
+
+`SetBacklight` exists alongside it and would be the better path, except the `Backlight` property is empty on this machine, so mutter sees no backlight it could drive.
+
+**Contrast shares the slider and the throttle.** `DisplayControl` carries the VCP code, so `0x12` reuses the write path, the collapsing of pending targets and the throttle unchanged. It is read from the monitor when the menu is built rather than stored, since unlike the luminance it survives in the monitor itself. Its journal lines read `contrast` where brightness reads `brightness`.

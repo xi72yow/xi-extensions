@@ -158,3 +158,8 @@
   border-radius: 8px;
   margin-right: 6px;
 }
+
+/* label above the slider, the row padding comes from popup-menu-item */
+.xiws-menu-slider {
+  spacing: 6px;
+}

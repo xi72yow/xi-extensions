@@ -1,17 +1,21 @@
+import Clutter from 'gi://Clutter'
 import Gio from 'gi://Gio'
 import GLib from 'gi://GLib'
 import GObject from 'gi://GObject'
+import St from 'gi://St'
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js'
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js'
 import * as Signals from 'resource:///org/gnome/shell/misc/signals.js'
 import { QuickSlider, SystemIndicator } from 'resource:///org/gnome/shell/ui/quickSettings.js'
+import { Slider } from 'resource:///org/gnome/shell/ui/slider.js'
 
 import { SkyLight } from './skyLight.js'
 
 Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async')
 
 const BRIGHTNESS_VCP = '10'
+const CONTRAST_VCP = '12'
 const ICON_NAME = 'display-brightness-symbolic'
 // irradiance is perceived roughly logarithmically, the scale sets where the
 // curve bends and full is treated as bright daylight
@@ -69,8 +73,12 @@ function parseLevel(output) {
 // monitors may store every ddc/ci write in memory with limited write cycles,
 // so each change is a single write straight to the target. targets arriving
 // while a write is under way collapse into the next one.
-class DisplayBrightness {
-  constructor() {
+class DisplayControl {
+  // the label only names the lines in the journal, which the counts in
+  // docs/brightness.md are grepped by
+  constructor(vcp, label) {
+    this._vcp = vcp
+    this._label = label
     this._cancellable = new Gio.Cancellable()
     this._displays = []
     this._loading = null
@@ -124,7 +132,7 @@ class DisplayBrightness {
 
     for (const bus of parseBuses(output)) {
       const { current, max } = parseLevel(
-        await ddcutil(['--bus', bus, '--brief', 'getvcp', BRIGHTNESS_VCP], this._cancellable),
+        await ddcutil(['--bus', bus, '--brief', 'getvcp', this._vcp], this._cancellable),
       )
       displays.push({ bus, max, written: current })
     }
@@ -151,13 +159,13 @@ class DisplayBrightness {
           if (target === display.written) continue
 
           await ddcutil(
-            ['--bus', display.bus, 'setvcp', BRIGHTNESS_VCP, String(target)],
+            ['--bus', display.bus, 'setvcp', this._vcp, String(target)],
             this._cancellable,
           )
           // one line per write, so the journal tells how often the monitor
           // is actually written to
           console.log(
-            `xiws: brightness ${display.written} -> ${target} of ${display.max} (${this._cause})`,
+            `xiws: ${this._label} ${display.written} -> ${target} of ${display.max} (${this._cause})`,
           )
           display.written = target
           moved = true
@@ -174,6 +182,85 @@ class DisplayBrightness {
   }
 }
 
+// dimming at signal level, which mutter applies to the output rather than to
+// the panel. it costs no write cycle and no round trip over i2c, but it lowers
+// the values sent instead of the backlight: black stays as bright as it was.
+// that makes it the one way further down once ddc/ci sits at the minimum of
+// the monitor, and a poor substitute for it above that.
+class SignalDimming {
+  constructor() {
+    this._proxy = null
+    this._connectors = []
+
+    try {
+      this._proxy = Gio.DBusProxy.new_for_bus_sync(
+        Gio.BusType.SESSION,
+        Gio.DBusProxyFlags.NONE,
+        null,
+        'org.gnome.Mutter.DisplayConfig',
+        '/org/gnome/Mutter/DisplayConfig',
+        'org.gnome.Mutter.DisplayConfig',
+        null,
+      )
+    } catch (error) {
+      logError(error, 'xiws: no display config proxy, signal dimming unavailable')
+      return
+    }
+
+    this._readConnectors()
+  }
+
+  get available() {
+    return this._connectors.length > 0
+  }
+
+  // the property lists one entry per connector and colour mode, and only the
+  // connector name is needed to address it
+  _readConnectors() {
+    const value = this._proxy?.get_cached_property('Luminance')
+    if (!value) return
+
+    const seen = new Set()
+    for (const entry of value.deepUnpack()) {
+      const connector = entry.connector?.deepUnpack?.()
+      const mode = entry['color-mode']?.deepUnpack?.()
+
+      if (typeof connector !== 'string' || mode === undefined) continue
+      const key = `${connector}:${mode}`
+      if (seen.has(key)) continue
+
+      seen.add(key)
+      this._connectors.push({ connector, mode })
+    }
+  }
+
+  set(percent) {
+    if (!this._proxy) return
+
+    for (const { connector, mode } of this._connectors) {
+      this._call('SetLuminance', new GLib.Variant('(sud)', [connector, mode, percent]))
+    }
+  }
+
+  reset() {
+    if (!this._proxy) return
+
+    for (const { connector, mode } of this._connectors) {
+      this._call('ResetLuminance', new GLib.Variant('(su)', [connector, mode]))
+    }
+  }
+
+  _call(method, parameters) {
+    this._proxy.call(method, parameters, Gio.DBusCallFlags.NONE, -1, null, (proxy, result) => {
+      try {
+        proxy.call_finish(result)
+      } catch (error) {
+        logError(error, `xiws: ${method} failed`)
+      }
+    })
+  }
+}
+
 // the target is either a manual level or the daylight curve shifted by an
 // offset. keys and slider only ever move the target, the monitors follow.
 export class BrightnessController extends Signals.EventEmitter {
@@ -181,7 +268,9 @@ export class BrightnessController extends Signals.EventEmitter {
     super()
 
     this._settings = settings
-    this._displays = new DisplayBrightness()
+    this._displays = new DisplayControl(BRIGHTNESS_VCP, 'brightness')
+    this._contrast = new DisplayControl(CONTRAST_VCP, 'contrast')
+    this._signal = new SignalDimming()
     this._sky = new SkyLight(settings)
     this._manual = null
     this._target = null
@@ -202,6 +291,9 @@ export class BrightnessController extends Signals.EventEmitter {
         this._apply()
       }),
     )
+    this._settingsIds.push(
+      settings.connect('changed::brightness-signal', () => this._applySignal()),
+    )
     this._tickId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, CURVE_TICK_SECONDS, () => {
       this._apply({ settle: true, cause: 'drift' })
       return GLib.SOURCE_CONTINUE
@@ -217,6 +309,41 @@ export class BrightnessController extends Signals.EventEmitter {
     this._sky.disconnect(this._skyChangedId)
     this._sky.destroy()
     this._displays.destroy()
+    this._contrast.destroy()
+
+    // the shell keeps the luminance after the extension goes, so an unloaded
+    // extension would leave the screen dimmed with no way to undo it
+    this._signal.reset()
+  }
+
+  get canDimSignal() {
+    return this._signal.available
+  }
+
+  get signal() {
+    return this._settings.get_int('brightness-signal')
+  }
+
+  // read from the monitor rather than stored: unlike the luminance it survives
+  // in the monitor itself, so the slider should start where the hardware is
+  async contrast() {
+    const level = await this._contrast.level()
+    return level === null ? null : clampPercent(level * 100)
+  }
+
+  setContrast(percent) {
+    this._contrast.moveTo(clampPercent(percent) / 100, 'menu')
+  }
+
+  _applySignal() {
+    const percent = this.signal
+    if (percent >= 100) {
+      this._signal.reset()
+    } else {
+      this._signal.set(percent)
+    }
+
+    this.emit('changed')
   }
 
   get target() {
@@ -265,6 +392,10 @@ export class BrightnessController extends Signals.EventEmitter {
   // the level found on the monitor is the manual starting point, so enabling
   // the extension does not move anything by itself
   async _start() {
+    // mutter forgets the luminance across a restart, so the stored value is
+    // put back rather than read from the compositor
+    this._applySignal()
+
     const level = await this._displays.level()
     if (level === null) return
 
@@ -329,6 +460,88 @@ export class BrightnessController extends Signals.EventEmitter {
   }
 }
 
+// the shell dropped PopupSliderMenuItem, so a row with a label above a slider
+// is assembled from the parts. the throttle is the same one the quick slider
+// uses, since every one of these writes to the monitor as well.
+const MenuSlider = GObject.registerClass(
+  class MenuSlider extends PopupMenu.PopupBaseMenuItem {
+    _init(label, onChange) {
+      super._init({ activate: false })
+
+      this._onChange = onChange
+      this._dragging = false
+      this._throttleId = 0
+      this._pending = null
+
+      const box = new St.BoxLayout({
+        vertical: true,
+        x_expand: true,
+        style_class: 'xiws-menu-slider',
+      })
+      box.add_child(new St.Label({ text: label, x_align: Clutter.ActorAlign.START }))
+
+      this.slider = new Slider(0)
+      this.slider.accessible_name = label
+      this._changedId = this.slider.connect('notify::value', () => this._moved())
+      this.slider.connect('drag-begin', () => {
+        this._dragging = true
+      })
+      this.slider.connect('drag-end', () => {
+        this._dragging = false
+        this._stopThrottle()
+        this._onChange(this.slider.value * 100)
+      })
+
+      box.add_child(this.slider)
+      this.add_child(box)
+    }
+
+    setValue(percent) {
+      this.slider.block_signal_handler(this._changedId)
+      this.slider.value = percent / 100
+      this.slider.unblock_signal_handler(this._changedId)
+    }
+
+    _moved() {
+      const value = this.slider.value * 100
+
+      if (!this._dragging) {
+        this._onChange(value)
+        return
+      }
+
+      if (this._throttleId) {
+        this._pending = value
+        return
+      }
+
+      this._onChange(value)
+      this._throttleId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SLIDER_THROTTLE_MS, () => {
+        this._throttleId = 0
+        if (this._pending === null) return GLib.SOURCE_REMOVE
+
+        const pending = this._pending
+        this._pending = null
+        this._onChange(pending)
+        return GLib.SOURCE_REMOVE
+      })
+    }
+
+    _stopThrottle() {
+      if (this._throttleId) {
+        GLib.Source.remove(this._throttleId)
+        this._throttleId = 0
+      }
+      this._pending = null
+    }
+
+    destroy() {
+      this._stopThrottle()
+      super.destroy()
+    }
+  },
+)
+
 const BrightnessItem = GObject.registerClass(
   class BrightnessItem extends QuickSlider {
     _init(controller, settings) {
@@ -362,6 +575,26 @@ const BrightnessItem = GObject.registerClass(
         settings.set_boolean('brightness-auto', state),
       )
       this.menu.addMenuItem(this._autoItem)
+
+      // both of these sit in the menu rather than in the quick settings grid:
+      // they are set once and left alone, unlike the brightness above them
+      this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem())
+
+      if (controller.canDimSignal) {
+        this._signalItem = new MenuSlider('Signal dimmen', (value) =>
+          settings.set_int('brightness-signal', clampPercent(value)),
+        )
+        this._signalItem.setValue(settings.get_int('brightness-signal'))
+        this.menu.addMenuItem(this._signalItem)
+      }
+
+      this._contrastItem = new MenuSlider('Kontrast', (value) =>
+        controller.setContrast(clampPercent(value)),
+      )
+      this.menu.addMenuItem(this._contrastItem)
+      controller.contrast().then((percent) => {
+        if (percent !== null) this._contrastItem.setValue(percent)
+      })
 
       this._changedId = controller.connect('changed', () => this._sync())
       this._sync()
@@ -414,6 +647,7 @@ const BrightnessItem = GObject.registerClass(
       this.slider.unblock_signal_handler(this._sliderChangedId)
 
       this._autoItem.setToggleState(controller.auto)
+      this._signalItem?.setValue(controller.signal)
       this.menu.setHeader(ICON_NAME, 'Bildschirmhelligkeit', this._describe())
     }
 
