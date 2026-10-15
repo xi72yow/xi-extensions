@@ -22,6 +22,11 @@ const CURVE_TICK_SECONDS = 60
 // wear the settings memory of the monitor for changes nobody notices
 const CURVE_HYSTERESIS_PERCENT = 4
 const PERSIST_DELAY_MS = 500
+// a drag emits notify::value with every motion event, which is a burst of i2c
+// writes of exactly the kind the monitor is meant to be spared. during a drag
+// the writes are therefore throttled, and the value under the hand when it
+// lets go is always written.
+const SLIDER_THROTTLE_MS = 400
 
 function isCancelled(error) {
   return error instanceof GLib.Error && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)
@@ -330,11 +335,24 @@ const BrightnessItem = GObject.registerClass(
       super._init({ iconName: ICON_NAME, menuEnabled: true, visible: false })
 
       this._controller = controller
+      this._dragging = false
+      this._throttleId = 0
+      this._pending = null
+
       this.slider.accessible_name = 'Bildschirmhelligkeit'
 
-      this._sliderChangedId = this.slider.connect('notify::value', () =>
-        controller.set(this.slider.value * 100),
-      )
+      this._sliderChangedId = this.slider.connect('notify::value', () => this._onSliderMoved())
+      this.slider.connect('drag-begin', () => {
+        this._dragging = true
+      })
+      this.slider.connect('drag-end', () => {
+        this._dragging = false
+        this._stopThrottle()
+
+        // the pending value is the one the hand stopped on, and it has to
+        // reach the monitor even when the throttle swallowed it
+        this._controller.set(this.slider.value * 100)
+      })
 
       this._autoItem = new PopupMenu.PopupSwitchMenuItem(
         'Automatisch nach Tageslicht',
@@ -347,6 +365,42 @@ const BrightnessItem = GObject.registerClass(
 
       this._changedId = controller.connect('changed', () => this._sync())
       this._sync()
+    }
+
+    // outside a drag every change is written right away: keys, scrolling and
+    // the menu produce single steps rather than a stream
+    _onSliderMoved() {
+      const target = this.slider.value * 100
+
+      if (!this._dragging) {
+        this._controller.set(target)
+        return
+      }
+
+      if (this._throttleId) {
+        this._pending = target
+        return
+      }
+
+      this._controller.set(target)
+      this._throttleId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SLIDER_THROTTLE_MS, () => {
+        this._throttleId = 0
+
+        if (this._pending === null) return GLib.SOURCE_REMOVE
+
+        const value = this._pending
+        this._pending = null
+        this._controller.set(value)
+        return GLib.SOURCE_REMOVE
+      })
+    }
+
+    _stopThrottle() {
+      if (this._throttleId) {
+        GLib.Source.remove(this._throttleId)
+        this._throttleId = 0
+      }
+      this._pending = null
     }
 
     _sync() {
@@ -373,6 +427,7 @@ const BrightnessItem = GObject.registerClass(
     }
 
     destroy() {
+      this._stopThrottle()
       this._controller.disconnect(this._changedId)
       super.destroy()
     }

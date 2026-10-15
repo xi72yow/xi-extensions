@@ -79,6 +79,8 @@ The curve is modelled, not measured. A single cloud passing the sun, the orienta
 
 A change made through the monitor menu is not seen either, the state still holds the level last written.
 
+**The slider is throttled while it is dragged.** `notify::value` fires with every motion event, which produced a burst of writes of exactly the kind the rest of this design avoids. During a drag the writes are limited to one per `SLIDER_THROTTLE_MS`, currently 400, and the value under the hand when it lets go is written on `drag-end` regardless, so the monitor never ends up on an intermediate step. Keys, scrolling and the menu are untouched by this, since they produce single steps rather than a stream.
+
 Monitors keep their settings in non-volatile memory with a limited number of write cycles, and whether a model stores every DDC/CI write right away or defers it is rarely documented. The MCCS command `0x0C` (Save Settings) does not settle it either: according to the ddcutil documentation most monitors offering it show no effect from it, and only a few need it for values to stick. No case of a monitor worn out this way could be found, yet f.lux held back DDC/CI control over a figure of about 100,000 cycles, and KDE Powerdevil delays and merges its writes for the same reason. Bursts are what the sources point at, so an earlier gliding transition was dropped in favour of single writes, and the curve only moves behind its hysteresis. How many writes that leaves depends on the range of the curve and the weather, roughly 10 on a narrow range and 40 or more on the full range with passing clouds. Every write is logged, so the actual count can be read from the journal:
 
 ```bash
@@ -89,3 +91,7 @@ journalctl --user --since today | grep -c 'xiws: brightness'
 Each line names its cause: `key`, `slider`, `settings`, `start`, `weather` for a fresh Open-Meteo response and `drift` for the minute tick, followed by the irradiance whenever the curve set the target.
 
 `ddcutil` 2.2 verifies every write by reading it back, and `--noverify` conflicts with that default in the tested build. A write thus takes around 0.2 s.
+
+**Dimming at signal level is possible and deliberately not used.** Mutter 48 exposes `SetLuminance(connector, color_mode, value)` and `ResetLuminance` on `org.gnome.Mutter.DisplayConfig`, which lower the output values without touching the monitor at all, so without any write cycle and without the 0.2 s a DDC/CI write costs. The connector shows up there as unset at 100.
+
+What it does not do is dim the backlight. Black stays as bright as it was, contrast drops and the panel keeps drawing the same power, which is the opposite of what dimming is wanted for in a dark room. It would fit as live feedback during a drag, with the DDC/CI write following on release, but the two would not agree on what a given percentage looks like and the picture would jump at the end of every drag. `SetBacklight` exists alongside it and would be the better path, except the `Backlight` property is empty on this machine, so mutter sees no backlight it could drive.
