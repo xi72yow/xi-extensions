@@ -99,9 +99,27 @@ The offset is in there because the slider changes its meaning with the mode. Man
 
 **The panel indicator is optional.** A `SystemIndicator` carries its own icon next to volume and network, switched through `brightness-indicator` and off by default: a permanent icon for a setting is only worth its place to whoever asked for it. It shows the target level, and in automatic mode the sky symbol instead of the brightness one, so the state is readable without opening anything.
 
+**Only the active colour mode is set.** `Luminance` lists an entry per connector and colour mode, and a monitor in HDR reports two. Writing both works, but only the mode the monitor is actually in has any effect, and the other would surface on a switch as a level from an earlier session. `GetCurrentState` names the active one in the properties of each monitor, so the write goes there alone. The reset covers every mode, since a value left behind elsewhere would come back when the monitor switches to it.
+
+This also moves the limit of the signal dimming: with HDR the pipeline carries 10 bits, so 1024 steps per channel instead of 256. At a luminance of 80 the remaining 819 are still more than the whole 8 bit chain ever had, which makes the colour depth a much weaker argument against coarse steps than it is in SDR.
+
 **The two layers are distributed rather than switched between.** Perceived brightness is roughly the product of the panel and the signal, so one target splits into both: the monitor takes the coarse step above the target, the luminance makes up the difference. The steps are relative, each a tenth below the last, which keeps the luminance between 90 and 100 across the whole range. Fixed steps were tried first and fell apart at the bottom, where a target of 6 left the luminance at 60 and the colour depth with it.
 
 Two things follow from that. A correction inside one step writes nothing to the monitor at all, which is where most of the saving comes from. And below the lowest step the monitor sits at its minimum while the luminance carries alone, down to `LUMINANCE_FLOOR`, which is the only way further down.
+
+**How coarse the steps should be is a trade and it was measured, not guessed.** `scripts/brightness-simulation.py` counts the writes of a modelled day with four cloud passages, using the same formulas:
+
+| Variante        | Hysterese 4 | Hysterese 1 | Luminance min |
+| --------------- | ----------- | ----------- | ------------- |
+| ohne Aufteilung | 41          | 84          | 100 %         |
+| Ratio 0.9       | 34          | 39          | 90 %          |
+| Ratio 0.85      | 25          | 25          | 85 %          |
+| Ratio 0.8       | 20          | 22          | 80 %          |
+| Ratio 0.75      | 17          | 17          | 75 %          |
+
+Three things follow. Without the split a fine hysteresis would double the writes, from 41 to 84, so the hysteresis was exactly the compensation for a missing second layer. The ratio in use, 0.9, barely cashes that in: 29 relative steps fall onto only 23 distinguishable raw values of a 50 step monitor, so at the lower end several steps collapse onto the same one and the saving disappears. And from 0.85 the hysteresis stops mattering at all, because the steps are then coarser than what the curve moves in a minute.
+
+Running the script with `--html` writes a chart page showing the distribution, the irradiance and what arrives at the monitor. The figures in this table come from there and have to be regenerated when the curve, the ratio or the hysteresis changes, since the script mirrors `lib/brightness.js` rather than reading it.
 
 The split is shown in the menu as figures with icons: the panel, the signal where it is below 100, and the irradiance while the automatic mode runs. The mark on the slider rail, drawn through the `overdrive-start` separator of `BarLevel`, shows where the monitor stops, but it cannot name the split and it disappears below the lowest step, which is why the figures carry it.
 

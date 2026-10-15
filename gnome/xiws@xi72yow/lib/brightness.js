@@ -228,6 +228,7 @@ class SignalDimming {
     this._onChanged = onChanged
     this._propertiesId = 0
     this._applied = null
+    this._modes = new Map()
 
     // the proxy has to be built asynchronously: gnome-shell is itself the
     // service behind org.gnome.Mutter.DisplayConfig, and a synchronous call
@@ -253,6 +254,7 @@ class SignalDimming {
     }
 
     this._readConnectors()
+    this._readColourModes()
 
     // the extension loads early, and mutter fills this property once the
     // monitor configuration is up, so changes are followed
@@ -261,6 +263,7 @@ class SignalDimming {
 
       this._connectors = []
       this._readConnectors()
+      this._readColourModes()
 
       // a connector arriving late also has to receive the stored value, the
       // caller reapplies it from here
@@ -268,6 +271,31 @@ class SignalDimming {
     })
 
     if (this.available) this._onChanged?.()
+  }
+
+  // the Luminance property lists an entry per colour mode, but only the one
+  // the monitor is actually in has any effect. setting the others as well
+  // writes a value nobody maintains, and it would surface on a switch between
+  // sdr and hdr as a level from an earlier session.
+  _readColourModes() {
+    this._proxy.call('GetCurrentState', null, Gio.DBusCallFlags.NONE, -1, null, (proxy, result) => {
+      let monitors
+      try {
+        ;[, monitors] = proxy.call_finish(result).deepUnpack()
+      } catch (error) {
+        logError(error, 'xiws: could not read the colour modes')
+        return
+      }
+
+      this._modes = new Map()
+      for (const [spec, , properties] of monitors) {
+        const mode = properties['color-mode']?.deepUnpack?.()
+        if (typeof mode === 'number') this._modes.set(spec[0], mode)
+      }
+
+      this._applied = null
+      this._onChanged?.()
+    })
   }
 
   destroy() {
@@ -313,14 +341,25 @@ class SignalDimming {
       return
     }
 
-    for (const { connector, mode } of this._connectors) {
+    for (const { connector, mode } of this._active()) {
       this._call('SetLuminance', new GLib.Variant('(sud)', [connector, mode, bounded]))
     }
   }
 
+  // without a known mode every entry is addressed, which is what the earlier
+  // revision did throughout: it works, it is just not the one that counts
+  _active() {
+    if (this._modes.size === 0) return this._connectors
+
+    return this._connectors.filter(({ connector, mode }) => this._modes.get(connector) === mode)
+  }
+
+  // reset covers every mode, not just the active one: a value left behind in
+  // the other mode would come back when the monitor switches to it
   reset() {
     if (!this._proxy) return
 
+    this._applied = null
     for (const { connector, mode } of this._connectors) {
       this._call('ResetLuminance', new GLib.Variant('(su)', [connector, mode]))
     }
