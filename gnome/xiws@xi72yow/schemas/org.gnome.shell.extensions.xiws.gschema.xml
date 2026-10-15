@@ -84,6 +84,11 @@
       <summary>Shift applied on top of the daylight curve, in percent</summary>
       <description>Set through the keys and the slider while the automatic mode is on, so a manual correction carries through the day.</description>
     </key>
+    <key name="brightness-indicator" type="b">
+      <default>false</default>
+      <summary>Show the brightness level in the panel</summary>
+      <description>A permanent icon next to volume and network, showing the target level and, in automatic mode, what the sky is doing.</description>
+    </key>
     <key name="search-depth" type="i">
       <default>3</default>
       <summary>How many directory levels below a search path are scanned</summary>

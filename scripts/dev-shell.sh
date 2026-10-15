@@ -54,6 +54,14 @@ export XDG_CONFIG_HOME="${PROFILE}"
 # than inheriting the geometry of the host
 export MUTTER_DEBUG_DUMMY_MODE_SPECS="${SIZE}"
 
+# the nested shell writes the same crash marker as the session around it, and
+# a hard kill leaves it behind. the next shell then reads it and starts
+# without extensions, so it is removed again if it was not there before.
+MARKER="${XDG_RUNTIME_DIR}/gnome-shell-disable-extensions"
+if [ ! -e "${MARKER}" ]; then
+  trap 'rm -f "${MARKER}"' EXIT INT TERM
+fi
+
 echo
 echo "nested shell at ${SIZE}, settings in ${PROFILE}"
 echo "  Super+Shift+W  picker"
@@ -61,4 +69,4 @@ echo "  Super+Shift+C  clipboard"
 echo "close the window to return"
 echo
 
-exec dbus-run-session -- "${SCRIPT_DIR}/dev-shell.sh" --inner "${SETTINGS}"
+dbus-run-session -- "${SCRIPT_DIR}/dev-shell.sh" --inner "${SETTINGS}"

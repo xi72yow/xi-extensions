@@ -56,6 +56,7 @@ The logarithm follows perception: going from 50 to 100 W/m² is a larger step fo
 | `brightness-location`              | empty       | `"lat,lon"`, required for automatic mode   |
 | `brightness-auto-min`, `-max`      | 20, 100     | range of the curve in percent              |
 | `brightness-offset`                | 0           | shift on top of the curve, set by the keys |
+| `brightness-indicator`             | false       | show the level in the panel                |
 
 The location has no default, the repository is public.
 
@@ -91,6 +92,12 @@ journalctl --user --since today | grep -c 'xiws: brightness'
 Each line names its cause: `key`, `slider`, `menu` for the contrast slider, `settings`, `start`, `weather` for a fresh Open-Meteo response and `drift` for the minute tick, followed by the irradiance whenever the curve set the target.
 
 `ddcutil` 2.2 verifies every write by reading it back, and `--noverify` conflicts with that default in the tested build. A write thus takes around 0.2 s.
+
+**What the menu shows.** Below the automatic switch a row of figures names what the brightness is made of: the panel, the signal where it is below 100, the irradiance while the automatic runs, and the offset where it is not zero. Icons carry the meaning rather than words, with the arrow of the offset following its sign.
+
+The offset is in there because the slider changes its meaning with the mode. Manually it sets the level, with the automatic running it shifts the curve, and that shift outlives the moment since it is kept in dconf and keeps acting as the irradiance moves. The figure is what makes that visible.
+
+**The panel indicator is optional.** A `SystemIndicator` carries its own icon next to volume and network, switched through `brightness-indicator` and off by default: a permanent icon for a setting is only worth its place to whoever asked for it. It shows the target level, and in automatic mode the sky symbol instead of the brightness one, so the state is readable without opening anything.
 
 **The two layers are distributed rather than switched between.** Perceived brightness is roughly the product of the panel and the signal, so one target splits into both: the monitor takes the coarse step above the target, the luminance makes up the difference. The steps are relative, each a tenth below the last, which keeps the luminance between 90 and 100 across the whole range. Fixed steps were tried first and fell apart at the bottom, where a target of 6 left the luminance at 60 and the colour depth with it.
 

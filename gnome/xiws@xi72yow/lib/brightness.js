@@ -391,6 +391,12 @@ export class BrightnessController extends Signals.EventEmitter {
     this._signal.reset()
   }
 
+  // the slider shifts the curve while the automatic runs, so the shift itself
+  // is part of what the menu has to show
+  get offset() {
+    return this._offset
+  }
+
   get canDimSignal() {
     return this._signal.available
   }
@@ -561,6 +567,7 @@ const SplitRow = GObject.registerClass(
       this._panel = this._pair('video-display-symbolic', box)
       this._signal = this._pair('preferences-color-symbolic', box)
       this._sky = this._pair('weather-clear-symbolic', box)
+      this._offset = this._pair('value-increase-symbolic', box)
 
       this.add_child(box)
     }
@@ -577,7 +584,7 @@ const SplitRow = GObject.registerClass(
       return { group, icon, label }
     }
 
-    setSplit(split, radiation) {
+    setSplit(split, radiation, offset) {
       this.visible = split !== null
       if (!split) return
 
@@ -591,10 +598,20 @@ const SplitRow = GObject.registerClass(
       this._signal.group.visible = split.luminance < 100
 
       this._sky.group.visible = radiation !== null
-      if (radiation === null) return
+      if (radiation !== null) {
+        this._sky.icon.icon_name = skyIcon(radiation)
+        this._sky.label.text = `${Math.round(radiation)} W/m²`
+      }
 
-      this._sky.icon.icon_name = skyIcon(radiation)
-      this._sky.label.text = `${Math.round(radiation)} W/m²`
+      // with the automatic running the slider moves the curve rather than the
+      // level, and that shift outlives the moment. naming it is what makes the
+      // difference to the manual mode visible.
+      this._offset.group.visible = offset !== null && offset !== 0
+      if (!this._offset.group.visible) return
+
+      this._offset.icon.icon_name =
+        offset > 0 ? 'value-increase-symbolic' : 'value-decrease-symbolic'
+      this._offset.label.text = `${Math.abs(offset)}`
     }
   },
 )
@@ -652,6 +669,7 @@ const BrightnessItem = GObject.registerClass(
       super._init({ iconName: ICON_NAME, menuEnabled: true, visible: false })
 
       this._controller = controller
+      this._settings = settings
       this._dragging = false
       this._throttleId = 0
       this._pending = null
@@ -683,6 +701,15 @@ const BrightnessItem = GObject.registerClass(
 
       this._splitRow = new SplitRow()
       this.menu.addMenuItem(this._splitRow)
+
+      this._indicatorItem = new PopupMenu.PopupSwitchMenuItem(
+        'In der Leiste anzeigen',
+        settings.get_boolean('brightness-indicator'),
+      )
+      this._indicatorItem.connect('toggled', (item, state) =>
+        settings.set_boolean('brightness-indicator', state),
+      )
+      this.menu.addMenuItem(this._indicatorItem)
 
       // both of these sit in the menu rather than in the quick settings grid:
       // they are set once and left alone, unlike the brightness above them
@@ -747,13 +774,18 @@ const BrightnessItem = GObject.registerClass(
       this.slider.unblock_signal_handler(this._sliderChangedId)
 
       this._autoItem.setToggleState(controller.auto)
+      this._indicatorItem.setToggleState(this._settings.get_boolean('brightness-indicator'))
 
       // availability can arrive after the menu was built, see SignalDimming
       // the separator of BarLevel marks where the monitor stops and the
       // luminance takes over. the step always sits above the target, so the
       // red overdrive colouring never kicks in, only the mark is drawn.
       this.slider.overdriveStart = controller.split ? controller.split.ddc / 100 : 1
-      this._splitRow.setSplit(controller.split, controller.auto ? controller.radiation : null)
+      this._splitRow.setSplit(
+        controller.split,
+        controller.auto ? controller.radiation : null,
+        controller.auto ? controller.offset : null,
+      )
       this.menu.setHeader(ICON_NAME, 'Bildschirmhelligkeit', this._describe())
     }
 
@@ -778,10 +810,44 @@ export const BrightnessIndicator = GObject.registerClass(
   class BrightnessIndicator extends SystemIndicator {
     _init(controller, settings) {
       super._init()
+
+      this._controller = controller
+      this._settings = settings
+
+      // a SystemIndicator carries its own icon in the panel, next to the
+      // volume and network ones. it is off by default: a permanent icon for a
+      // setting is only worth its place to whoever asked for it.
+      this._icon = this._addIndicator()
+      this._icon.add_style_class_name('xiws-panel-level')
+
+      // a SystemIndicator is a box, so the level goes right beside the icon
+      this._label = new St.Label({ y_align: Clutter.ActorAlign.CENTER })
+      this.add_child(this._label)
+
       this.quickSettingsItems.push(new BrightnessItem(controller, settings))
+
+      this._changedId = controller.connect('changed', () => this._sync())
+      this._settingsId = settings.connect('changed::brightness-indicator', () => this._sync())
+      this._sync()
+    }
+
+    _sync() {
+      const shown = this._settings.get_boolean('brightness-indicator')
+      const split = this._controller.split
+
+      this._icon.visible = shown && split !== null
+      this._label.visible = this._icon.visible
+      if (!this._icon.visible) return
+
+      const radiation = this._controller.auto ? this._controller.radiation : null
+      this._icon.icon_name = radiation === null ? ICON_NAME : skyIcon(radiation)
+      this._label.text = `${clampPercent(this._controller.target)} %`
     }
 
     destroy() {
+      this._controller.disconnect(this._changedId)
+      this._settings.disconnect(this._settingsId)
+
       for (const item of this.quickSettingsItems) item.destroy()
       super.destroy()
     }

@@ -89,6 +89,14 @@ gnome-extensions enable xiws@xi72yow
 
 The script installs the GNOME extensions into `~/.local/share/gnome-shell/extensions/` and compiles their schemas in place. On Wayland a new session is required afterwards, restarting the shell without logging out is not possible.
 
+To look at a change without logging out there is a nested shell:
+
+```bash
+./scripts/dev-shell.sh 2560x720
+```
+
+It installs first and then opens a GNOME Shell of its own with a monitor of the given size. Shortcuts are bound globally by whichever shell registers them first, which is always the session around it, so the nested instance gets a dconf profile of its own, seeded from the real settings, with the shortcuts moved onto Shift.
+
 The Chrome extensions are loaded through `chrome://extensions` as unpacked extensions for testing. For `chrome/xiws` the id stays put while doing so, since `manifest.json` pins it through the signing key. Without that it would be derived from the path and change whenever the directory moves, leaving the associated storage orphaned, which is still the case for `webtweaks`.
 
 Packaging the Chrome extension locally needs the private key:

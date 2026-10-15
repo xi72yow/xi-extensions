@@ -179,3 +179,8 @@
 .xiws-split-pair {
   spacing: 6px;
 }
+
+/* the level beside the panel icon, see brightness-indicator */
+.xiws-panel-level {
+  margin-right: 2px;
+}
