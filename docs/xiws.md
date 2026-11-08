@@ -277,6 +277,12 @@ Both copies hold the same thing, url, title and order. Restoring prefers the loc
 
 Bookmarks are written when a workspace window closes, which is the point at which its state is final. A crash or a browser shutdown can skip that, so an alarm sweeps every five minutes as a safety net. Both compare the folder against the stored tabs first and do nothing when they match, which keeps sync traffic down.
 
+**Duplicate tabs are closed on opening.** A tab whose URL is already open in the same window is removed right after creation, and the existing tab is activated if the new one would have been. Identical means the whole URL including query and fragment. The check only runs in `chrome.tabs.onCreated`, since closing a tab that navigated onto an open URL would discard its history. Among identical tabs the one with the lowest id is kept, so a burst opened at once still leaves exactly one instead of each tab seeing the others and all of them being closed.
+
+This was prompted by an external process opening the same GitHub Actions run several thousand times, which made Chrome unresponsive and filled the stored session. The cause of that burst could not be determined. Scoping the check to a window keeps the same page open in two workspaces possible.
+
+Snapshots and restores additionally drop repeated URLs, so a state recorded before the check existed does not bring a burst back.
+
 Restored tabs are discarded once they have finished loading, which frees the memory behind them while title and favicon stay in the tab strip.
 
 Discarding them immediately after creation does not work, even though that would avoid the initial load entirely. A tab that never completed has no state to return to and stays stuck showing `about:blank` as "loading". The discard therefore waits for `status === 'complete'` through `chrome.tabs.onUpdated`, with a second listener on `onRemoved` so a tab closed in the meantime does not leave the first one registered.

@@ -43,6 +43,34 @@ function isStorable(rawUrl) {
   }
 }
 
+const tabUrl = (tab) => tab.url || tab.pendingUrl
+
+function uniqueByUrl(entries) {
+  const seen = new Set()
+  return entries.filter((entry) => !seen.has(entry.url) && seen.add(entry.url))
+}
+
+// identical means the whole url, query and fragment included. only the
+// opening of a tab is checked, closing a tab that navigated onto an open url
+// would throw away its history. the oldest tab wins, so a burst of identical
+// tabs opened at once still keeps exactly one of them
+async function closeIfDuplicate(tab) {
+  const url = tabUrl(tab)
+  if (!isStorable(url)) return false
+
+  try {
+    const siblings = await chrome.tabs.query({ windowId: tab.windowId })
+    const original = siblings.find((other) => other.id < tab.id && tabUrl(other) === url)
+    if (!original) return false
+
+    if (tab.active) await chrome.tabs.update(original.id, { active: true })
+    await chrome.tabs.remove(tab.id)
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function readBindings() {
   const { bindings = {} } = await chrome.storage.session.get('bindings')
   return bindings
@@ -163,7 +191,10 @@ async function restore(sentinel, sentinelTab) {
   const { windowId, id: sentinelTabId } = sentinelTab
   const stored = await readState(sentinel.workspace)
 
-  const entries = stored?.tabs?.length ? stored.tabs : sentinel.presets.map((url) => ({ url }))
+  // states written before duplicates were filtered may still carry them
+  const entries = uniqueByUrl(
+    stored?.tabs?.length ? stored.tabs : sentinel.presets.map((url) => ({ url })),
+  )
 
   await bindWindow(windowId, sentinel.workspace)
 
@@ -227,9 +258,11 @@ async function snapshot(windowId) {
   // window went away between scheduling and running
   if (tabs.length === 0) return
 
-  const entries = tabs
-    .map((tab) => ({ url: tab.url || tab.pendingUrl, title: tab.title }))
-    .filter((entry) => isStorable(entry.url))
+  const entries = uniqueByUrl(
+    tabs
+      .map((tab) => ({ url: tabUrl(tab), title: tab.title }))
+      .filter((entry) => isStorable(entry.url)),
+  )
 
   await chrome.storage.local.set({
     [stateKey(workspace)]: { tabs: entries, savedAt: Date.now() },
@@ -274,12 +307,14 @@ async function sweep() {
   }
 }
 
-chrome.tabs.onCreated.addListener((tab) => {
+chrome.tabs.onCreated.addListener(async (tab) => {
   const sentinel = parseSentinel(tab.pendingUrl || tab.url)
   if (sentinel) {
     handleSentinel(sentinel, tab)
     return
   }
+
+  if (await closeIfDuplicate(tab)) return
 
   scheduleSnapshot(tab.windowId)
 })
