@@ -110,8 +110,8 @@ function discoverWorkspaces(searchPaths, depth, exclude) {
   return found.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-// window classes differ in spelling between toolkits, github desktop for
-// instance carries no StartupWMClass at all
+// window classes differ in spelling between toolkits, and an application
+// without a StartupWMClass leaves the class to whatever its toolkit derives
 function normalizeClass(value) {
   return (value || '').toLowerCase().replace(/[\s_-]/g, '')
 }
@@ -791,7 +791,7 @@ const WorkspacePicker = GObject.registerClass(
       this._settings = settings
       this._workspaces = []
       this._sessions = new Map()
-      this._followedSession = null
+      this._activeSession = null
       this._claimHandlerId = 0
       this._claims = []
       this._deferred = new Set()
@@ -913,9 +913,8 @@ const WorkspacePicker = GObject.registerClass(
           if (seen.has(id)) return
           seen.add(id)
 
-          // the git client follows sessions instead of belonging to one, so
-          // capturing it would drop it from every session it is not on at
-          // that moment, and it would never be started again
+          // the git client is one instance shared by every session, capturing
+          // it would start it again whenever the session is reopened
           if (id === gitId) return
 
           // an entry asking to be centred keeps its own size, so measuring
@@ -1075,15 +1074,7 @@ const WorkspacePicker = GObject.registerClass(
       if (missing.length === 0) return
 
       this._claimWindows(workspace, stored, missing)
-      this._runLaunchSteps(
-        this._launchSteps(missing, {
-          name: HOME_KEY,
-          path: null,
-          index,
-          layout: stored,
-          withGit: false,
-        }),
-      )
+      this._runLaunchSteps(this._launchSteps(missing, { name: HOME_KEY, path: null, index }))
     }
 
     // leaving the emptied workspace behind, the way closing a tab moves on
@@ -1250,30 +1241,12 @@ const WorkspacePicker = GObject.registerClass(
     // way a workspace can be reached, including the overview and gestures
     onWorkspaceSwitched() {
       const active = global.workspace_manager.get_active_workspace()
-      const session = this._sessionForWorkspace(active)
+      const name = this._sessionForWorkspace(active)?.name ?? null
 
-      if (!session) {
-        this._followedSession = null
-        return
-      }
+      if (name === this._activeSession) return
+      this._activeSession = name
 
-      if (this._followedSession === session.name) return
-      this._followedSession = session.name
-
-      const index = active.index()
-      const layout = this._layoutFor(session)
-      const app = Shell.AppSystem.get_default().lookup_app(
-        this._settings.get_string('git-desktop-id'),
-      )
-
-      // a cold git client has no window yet, so it has to be caught as it
-      // appears instead of being moved right away
-      if (!app || app.state !== Shell.AppState.RUNNING) {
-        this._claimWindows(active, layout, [this._settings.get_string('git-desktop-id')])
-      }
-
-      this._rememberWorkspace(session.name)
-      this._defer(SETTLE_MS, () => this._followWithGit(session.path, index, layout))
+      if (name) this._rememberWorkspace(name)
     }
 
     // everything else is handled by onWorkspaceSwitched, which fires for
@@ -1303,15 +1276,6 @@ const WorkspacePicker = GObject.registerClass(
 
       this._claimWindows(active, layout, [desktopId])
 
-      if (desktopId === this._settings.get_string('git-desktop-id')) {
-        if (session) {
-          this._followWithGit(session.path, index, layout)
-        } else {
-          launch('github-desktop', index)
-        }
-        return
-      }
-
       const browser = this._settings.get_string('browser-command')
 
       // the reserved workspace holds no session yet carries tabs of its own,
@@ -1326,24 +1290,33 @@ const WorkspacePicker = GObject.registerClass(
       launch(`${browser} --new-window ${GLib.shell_quote(sentinel)}`, index)
     }
 
-    // github desktop holds a single instance lock, so it cannot live on a
-    // workspace, it switches repository and follows the session instead
-    // the shipped github cli stubs out the linux path, the app itself still
-    // handles --cli-open and forwards it through second-instance
-    _followWithGit(path, targetIndex, layout) {
-      launch(`github-desktop --cli-open=${GLib.shell_quote(path)}`, targetIndex)
-
-      // the shell already knows which windows belong to an application, so
-      // no window class has to be guessed here
+    // the git client gives an overview across every repository, so it is a
+    // single instance focused wherever it lives instead of following sessions
+    focusGit() {
       const app = Shell.AppSystem.get_default().lookup_app(
         this._settings.get_string('git-desktop-id'),
       )
       if (!app) return
 
-      for (const window of app.get_windows()) {
-        if (window.is_on_all_workspaces()) continue
-        window.change_workspace_by_index(targetIndex, false)
-        placeWindow(window, layout)
+      const [recent] = app.get_windows()
+      if (recent) {
+        Main.activateWindow(recent, global.get_current_time())
+        return
+      }
+
+      const active = global.workspace_manager.get_active_workspace()
+      const session = this._sessionForWorkspace(active)
+      const layout = session ? this._layoutFor(session) : []
+
+      this._claimWindows(active, layout, [app.get_id()])
+
+      // handed over as a file so the desktop entry decides how a repository
+      // is passed on the command line
+      const files = session ? [Gio.File.new_for_path(session.path)] : []
+      try {
+        app.get_app_info().launch(files, global.create_app_launch_context(0, active.index()))
+      } catch (error) {
+        logError(error, `xiws: failed to launch ${app.get_id()}`)
       }
     }
 
@@ -1357,15 +1330,14 @@ const WorkspacePicker = GObject.registerClass(
     _startSession(workspace) {
       const editorId = this._settings.get_string('editor-desktop-id')
       const browserId = this._settings.get_string('browser-desktop-id')
-      const gitId = this._settings.get_string('git-desktop-id')
 
       // a previously captured arrangement wins over the configured default,
       // it carries both the applications and their geometry
       const stored = this._storedLayout(workspace.name)
       const layout = stored ?? parseLayout(this._settings.get_string('session-layout'))
 
-      // editor, browser and git client make up a project session and are
-      // always started. driving them from the captured set meant a session
+      // editor and browser make up a project session and are always
+      // started. driving them from the captured set meant a session
       // lost one of them whenever it was not visible while capturing.
       // everything beyond them comes from what was captured.
       const captured = stored ? stored.map((tile) => tile.app) : []
@@ -1374,9 +1346,7 @@ const WorkspacePicker = GObject.registerClass(
       const target = pickWorkspace(this._settings.get_int('first-workspace-index'))
       const index = target.index()
 
-      // the git client is launched alongside without being part of the
-      // captured set, so it has to be claimed for as well
-      this._claimWindows(target, layout, [...wanted, gitId])
+      this._claimWindows(target, layout, wanted)
       target.activate(global.get_current_time())
 
       this._sessions.set(workspace.name, {
@@ -1386,19 +1356,16 @@ const WorkspacePicker = GObject.registerClass(
       })
       this._rememberWorkspace(workspace.name)
 
-      // the git client is always included rather than driven by the captured
-      // set, for the same reason it is skipped while capturing
       this._runLaunchSteps(
-        this._launchSteps(wanted, { name: workspace.name, path: workspace.path, index, layout }),
+        this._launchSteps(wanted, { name: workspace.name, path: workspace.path, index }),
       )
     }
 
-    _launchSteps(wanted, { name, path, index, layout, withGit = true }) {
+    _launchSteps(wanted, { name, path, index }) {
       const editorId = this._settings.get_string('editor-desktop-id')
       const browserId = this._settings.get_string('browser-desktop-id')
-      const gitId = this._settings.get_string('git-desktop-id')
 
-      const known = [editorId, browserId, gitId]
+      const known = [editorId, browserId]
       const system = Shell.AppSystem.get_default()
       const steps = []
 
@@ -1415,16 +1382,7 @@ const WorkspacePicker = GObject.registerClass(
         steps.push(() => launch(`${browser} --new-window ${GLib.shell_quote(sentinel)}`, index))
       }
 
-      // a running instance only switches repository without creating a
-      // window, so claiming on window-created would never see it either
-      if (withGit) {
-        steps.push(() => this._followWithGit(path, index, layout))
-      } else if (wanted.includes(gitId)) {
-        const app = system.lookup_app(gitId)
-        if (app) steps.push(() => app.open_new_window(index))
-      }
-
-      // anything beyond the three known roles was picked up from a previous
+      // anything beyond the two known roles was picked up from a previous
       // session and just gets a window on the same workspace
       for (const id of wanted) {
         if (known.includes(id)) continue
@@ -1548,9 +1506,7 @@ export default class XiwsExtension extends Extension {
     this._bind(OPEN_BROWSER, () =>
       this._picker.openAppInSession(this._settings.get_string('browser-desktop-id')),
     )
-    this._bind(OPEN_GIT, () =>
-      this._picker.openAppInSession(this._settings.get_string('git-desktop-id')),
-    )
+    this._bind(OPEN_GIT, () => this._picker.focusGit())
 
     this._switchHandlerId = global.workspace_manager.connect('workspace-switched', () =>
       this._picker.onWorkspaceSwitched(),

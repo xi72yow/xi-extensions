@@ -1,6 +1,6 @@
 # xiws
 
-Dev workspaces for GNOME. A workspace bundles a project directory with the applications belonging to it: GitHub Desktop, Zed and a Chrome window holding the tabs of the project.
+Dev workspaces for GNOME. A workspace bundles a project directory with the applications belonging to it: Zed and a Chrome window holding the tabs of the project. gitdeck sits beside them as one git client shared by every session.
 
 Status: in use. Sessions, snapping, presets and the clipboard are implemented; what remains open is listed at the end.
 
@@ -27,11 +27,11 @@ For the same reason a claim holds the `Meta.Workspace` object rather than its in
 
 This only surfaced after the browser warm up round was removed. That round used to occupy the reserved workspace before the selection ran, so mutter already kept a spare workspace at the end and nothing had to be appended.
 
-**Windows are moved explicitly.** Passing a workspace to `global.create_app_launch_context` only writes a startup notification, which a running instance ignores. Chrome and GitHub Desktop are usually already running, so their new windows appeared on the previously active workspace. Verified in a nested shell: a window opens on workspace 0 and is moved to 1 only through `change_workspace_by_index`.
+**Windows are moved explicitly.** Passing a workspace to `global.create_app_launch_context` only writes a startup notification, which a running instance ignores. Chrome is usually already running, so its new windows appeared on the previously active workspace. Verified in a nested shell: a window opens on workspace 0 and is moved to 1 only through `change_workspace_by_index`.
 
 Claiming listens on `window-created` and acts once the compositor reports `first-frame`, since window properties are not reliably set before that. It stays active for `claim-seconds` after opening a session, so unrelated windows opened in the meantime are left alone.
 
-**Claims are held side by side and keyed by application.** A single exclusive claim was replaced by every later one, so opening a second workspace while the first was still coming up redirected its remaining windows to the newer target. Switching to a session with a cold git client had the same effect, since that arms a claim as well. Windows then arrived on whichever workspace had armed the last claim, the reserved one included.
+**Claims are held side by side and keyed by application.** A single exclusive claim was replaced by every later one, so opening a second workspace while the first was still coming up redirected its remaining windows to the newer target. Switching to a session with a cold git client had the same effect while the git client still followed sessions, since that armed a claim as well. Windows then arrived on whichever workspace had armed the last claim, the reserved one included.
 
 Each claim now carries the set of applications its launch is waiting for. A window goes to the first claim still expecting its application, and that entry is removed afterwards, so a claim retires once everything it launched has appeared. Only windows the shell cannot map to an application fall back to the oldest claim, since there is nothing to key them on.
 
@@ -41,15 +41,13 @@ The consequence is that a second window of the same application within one launc
 
 **Applications are started spaced out, not at once.** Launching the three of them together crashed `gnome-keyring-daemon` with a `TRAP`, since all of them query the secret service on startup and raced each other there. Afterwards systemd restarted the service while D-Bus activated a second instance, leaving two daemons that reported `discover_other_daemon` and asked for authentication again. The spacing also flattens the CPU spike that starting a Rust editor and two Electron applications simultaneously produces.
 
-**Windows are identified by application, not by window class.** Comparing window classes failed for GitHub Desktop, which follows neither of the spellings its manifest suggests. Since the shell maintains the window to application mapping itself, `Shell.WindowTracker.get_window_app` is asked instead and the result compared against `session-desktop-ids`. Both `org.gnome.Shell.Introspect.GetWindows` and `GetRunningApplications` are rejected with `AccessDenied` for unprivileged callers, so the class could not be determined from outside either. `claim-window-classes` remains as a fallback for windows the shell cannot map, and is empty by default.
-
-The same applies to GitHub Desktop following a session: its windows are taken from `Shell.App.get_windows()` on the app resolved through `git-desktop-id`. This also happens when opening a session, not only when switching. A running instance merely changes repository without creating a window, so claiming on `window-created` would never see it.
+**Windows are identified by application, not by window class.** Comparing window classes failed for GitHub Desktop, the git client used back then, which follows neither of the spellings its manifest suggests. Since the shell maintains the window to application mapping itself, `Shell.WindowTracker.get_window_app` is asked instead and the result compared against `session-desktop-ids`. Both `org.gnome.Shell.Introspect.GetWindows` and `GetRunningApplications` are rejected with `AccessDenied` for unprivileged callers, so the class could not be determined from outside either. `claim-window-classes` remains as a fallback for windows the shell cannot map, and is empty by default.
 
 **Windows are placed into fixed slots.** `session-layout` assigns a tile per application, given as fractions of the work area, so the same layout holds on any monitor size. Placement uses `move_resize_frame` directly and therefore needs no tiling extension and no auto tiling. Applications without an entry keep their own placement, an empty array disables placement altogether. A maximized window is unmaximized first, otherwise the geometry would not take effect.
 
 Assignment is per application rather than by order of appearance, so the arrangement does not depend on which application finishes starting first. A tile may carry `background`, which lowers the window behind the others after placing it.
 
-A tile without `width` and `height` only moves the window and leaves its size alone, using `move_frame` instead of `move_resize_frame`. Together with `center` that yields a window placed in the middle at whatever size it carries. GitHub Desktop uses this, because it stores its own window size and resizing it on every session change would keep overwriting that.
+A tile without `width` and `height` only moves the window and leaves its size alone, using `move_frame` instead of `move_resize_frame`. Together with `center` that yields a window placed in the middle at whatever size it carries. The git client uses this, because it keeps its own window size and a cold start should not overwrite that.
 
 Such an entry is also exempt from capturing. Measuring it would replace the intent with the geometry it happens to have at that moment, and the setting would silently turn into a fixed size again.
 
@@ -65,9 +63,9 @@ Only the first window per application is recorded, otherwise a second editor win
 
 The reserved workspace is the exception, since it is never closed. Merging left its set growing monotonically: an application that ran there once stayed in it and was launched again on every open, long after it had been shut down. Capturing is therefore authoritative for `__home__`. The trade off is that a window temporarily moved off the reserved workspace drops out of its set, which seems acceptable given that the set is meant to describe what was there last.
 
-**Editor, browser and git client make up a project session and are always started.** Driving them from the captured set meant a session lost one of them whenever it happened to be on another workspace while capturing, and since the set drives the next launch it never came back. That is what made the editor stop opening. Everything beyond the three comes from what was captured and is opened through `Shell.App.open_new_window` on the session workspace.
+**Editor and browser make up a project session and are always started.** Driving them from the captured set meant a session lost one of them whenever it happened to be on another workspace while capturing, and since the set drives the next launch it never came back. That is what made the editor stop opening. Everything beyond the two comes from what was captured and is opened through `Shell.App.open_new_window` on the session workspace.
 
-The git client is additionally skipped while capturing, since it follows sessions rather than belonging to one and would otherwise pile up in every set.
+The git client is skipped while capturing. It is one instance covering every repository, so it belongs to no session, and a captured entry would start it again whenever that session is reopened.
 
 The reserved workspace is the exception in the other direction: there nothing is forced, see the picker section.
 
@@ -83,7 +81,7 @@ The heading of the session section carries a "close all" action that applies the
 
 Keeping index 0 reserved at all times means turning off `dynamic-workspaces` and setting a fixed `num-workspaces`. That is a decision about the desktop rather than about this extension, so the extension does not change it by itself.
 
-The git client is exempt from being closed. Being a single shared instance, closing it would remove it from every other session as well. It is moved to the workspace below the session range instead, which is the one reserved for personal use. Switching to a session also arms window claiming for a moment, because the git client may have been shut down in the meantime and then starts cold, leaving no window to move at that point.
+The git client is exempt from being closed. Being a single shared instance, closing it would remove it from every other session as well. It is moved to the workspace below the session range instead, which is the one reserved for personal use.
 
 **The reserved workspace carries a browser window like any other.** It is opened under the sentinel name `__home__`, the same key its arrangement is stored under, so its tabs are persisted and restored through the Chrome extension rather than being left to the browser.
 
@@ -98,13 +96,15 @@ An earlier revision treated the first browser window as an untracked default ses
 
 ## Application models
 
-| App            | Behaviour on switch                                    | Invocation                         |
-| -------------- | ------------------------------------------------------ | ---------------------------------- |
-| Zed            | one window per workspace, stays on its GNOME workspace | `zed --new <path>`                 |
-| Chrome         | one window per workspace, stays put, default profile   | sentinel URL, see below            |
-| GitHub Desktop | single instance, follows along, repository changes     | `x-github-client://openRepo/<url>` |
+| App     | Behaviour on switch                                    | Invocation                     |
+| ------- | ------------------------------------------------------ | ------------------------------ |
+| Zed     | one window per workspace, stays on its GNOME workspace | `zed --new <path>`             |
+| Chrome  | one window per workspace, stays put, default profile   | sentinel URL, see below        |
+| gitdeck | single instance, stays where it is                     | desktop entry, `--open <path>` |
 
-GitHub Desktop holds a single instance lock and is therefore not bound to a session. On switch only the displayed repository is changed, and the window is pulled onto the active GNOME workspace via `change_workspace`.
+gitdeck shows every repository at once and updates them in one go, so it is not bound to a session and does not follow workspace switches. `<Super>D` focuses it wherever it lives.
+
+GitHub Desktop held this role before. It could only show one repository at a time, which is why it used to follow sessions: on every switch the repository was changed and the window pulled onto the active workspace. That brought it to the front on each switch, and it is no longer needed with a client that gives the overview by itself.
 
 Chrome deliberately keeps using the default profile. Any form of profile separation, both `--profile-directory` and `--user-data-dir`, creates its own cookie store. Chrome Sync carries passwords and bookmarks but no session cookies, so with SSO providers every profile requires its own login flow. That was rejected as impractical.
 
@@ -130,7 +130,7 @@ The reserved workspace is the first entry of the session section, labelled throu
 
 It is drawn as the same card as every other session, thumbnail included, since it is a workspace like the rest and differs only in always being there. The one omission is the close button: its windows are not a session that can be ended, so neither the button nor the Delete key applies to it.
 
-It is restored like a session but nothing is forced onto it. Its arrangement is captured under the key `__home__`, a name no repository can carry, and opening it launches only what was there last time and is not already running. Without a stored state it is a plain workspace switch. The editor gets no project path there, and the git client is not pulled along, since neither belongs to a workspace that has no project.
+It is restored like a session but nothing is forced onto it. Its arrangement is captured under the key `__home__`, a name no repository can carry, and opening it launches only what was there last time and is not already running. Without a stored state it is a plain workspace switch. The editor gets no project path there, since it belongs to no project.
 
 The browser is the exception among the three: it is opened with the sentinel `ws=__home__` like on any other workspace, so the tabs of the reserved workspace are persisted and come back with it. The same applies to `<Super>E` while the reserved workspace is active. Other workspaces without a session still get a plain window, since two windows bound to `__home__` would overwrite each other's state.
 
@@ -152,7 +152,7 @@ Keyboard navigation stays linear across the grid: Up and Down step through the e
 
 Sessions are held as a map from project name to `Meta.Workspace`. The object reference is stored rather than the index, because indices shift when dynamic workspaces are added or removed. A session is dropped as soon as its workspace no longer exists or holds no windows, so closing everything on a workspace ends the session implicitly.
 
-Activating a session switches to its workspace instead of launching anything again. GitHub Desktop follows along, since its single instance lock keeps it from living on a workspace: the repository is switched through `--cli-open` and its window is moved to the target workspace.
+Activating a session switches to its workspace instead of launching anything again.
 
 Thumbnails are built from `Clutter.Clone` on the window actors, positioned by `get_frame_rect` and scaled to the work area. Deliberately not used is the `WorkspaceThumbnail` class of the overview, which is bound to that context. Windows without a compositor actor fall back to their application icon.
 
@@ -160,22 +160,24 @@ Their height follows the aspect ratio of the work area rather than being fixed. 
 
 ## Shortcuts
 
-| Binding    | Effect                                                         |
-| ---------- | -------------------------------------------------------------- |
-| `<Super>W` | open the workspace picker                                      |
-| `<Super>C` | open the clipboard history                                     |
-| `<Super>E` | focus the browser of the current session, or open it there     |
-| `<Super>D` | focus the git client for the current session, or open it there |
+| Binding    | Effect                                                               |
+| ---------- | -------------------------------------------------------------------- |
+| `<Super>W` | open the workspace picker                                            |
+| `<Super>C` | open the clipboard history                                           |
+| `<Super>E` | focus the browser of the current session, or open it there           |
+| `<Super>D` | focus the git client wherever it lives, or open it on this workspace |
 
-The two application shortcuts look for a matching window on the active workspace first and only launch when none is there. Launching goes through the session context, so the browser gets the sentinel URL of that session and the git client the matching repository. Outside a session both simply open normally.
+The browser shortcut looks for a matching window on the active workspace first and only launches when none is there. Launching goes through the session context, so the browser gets the sentinel URL of that session. Outside a session it simply opens a plain window.
+
+The git client shortcut looks for its window on any workspace, since there is only one, and activating it switches to wherever it sits. Only when it is not running is it started on the active workspace. Inside a session the project path is handed over as a file, so the desktop entry decides how it ends up on the command line.
 
 All four are free of system bindings. `<Super>B` was the obvious choice for the browser but is taken by `media-keys www`, and `<Super>V` by `toggle-message-tray`. C, D and E sit together on the keyboard, which keeps the three application shortcuts within one hand position.
 
-## Following workspace switches
+## Workspace switches
 
 Rather than intercepting the workspace shortcuts, the extension listens on `workspace-switched`. That covers every way a workspace can be reached, including the overview and touchpad gestures, and keeps the standard bindings intact.
 
-On arriving at a workspace that belongs to a session, the git client switches repository and follows along. A guard on the last followed session prevents repeating that when the same workspace is reached again. Window claiming is only armed when the git client is not running, since a cold start has no window to move at that point.
+Arriving at a workspace that belongs to a session moves it to the front of `recent-workspaces`. A guard on the last active session prevents rewriting the setting when the same workspace is reached again.
 
 Activating a session from the picker therefore only activates its workspace, everything else happens in the switch handler.
 
@@ -222,6 +224,8 @@ The theme shipped with the running shell is the reference for this, readable thr
 ## Verified findings
 
 Checked on 2026-09-05 against GNOME Shell 48.7 on Wayland and Google Chrome 152.
+
+The findings on GitHub Desktop below date from when it was the git client. They are kept for reference.
 
 **The GitHub Desktop CLI path does not work.** `github open <path>` fails with `Error: Unsupported platform`. In the bundle under `/usr/lib/github-desktop/resources/app/cli.js` the platform specific function for `open` and `clone` is a stub that always throws. This goes unnoticed in daily use because the shell wrapper detaches the process into the background.
 
@@ -319,7 +323,7 @@ All of these live under `/org/gnome/shell/extensions/xiws/` and can be dumped wi
 | `toggle-picker`              | `<Super>W`                          | open the workspace picker                                  |
 | `toggle-clipboard`           | `<Super>C`                          | open the clipboard history                                 |
 | `open-browser`               | `<Super>E`                          | browser of the current session                             |
-| `open-git`                   | `<Super>D`                          | git client for the current session                         |
+| `open-git`                   | `<Super>D`                          | focus the git client, wherever it lives                    |
 | `search-paths`               | `~/Schreibtisch`, `~/Workplace`     | where repositories are looked for                          |
 | `search-depth`               | 3                                   | levels below a search path                                 |
 | `search-exclude`             | `node_modules` and similar          | never descended into                                       |
@@ -331,7 +335,7 @@ All of these live under `/org/gnome/shell/extensions/xiws/` and can be dumped wi
 | `editor-desktop-id`          | `dev.zed.Zed.desktop`               | for detection and restoring                                |
 | `browser-command`            | `google-chrome`                     |                                                            |
 | `browser-desktop-id`         | `google-chrome.desktop`             | also used to check whether it runs                         |
-| `git-desktop-id`             | `github-desktop.desktop`            | the application that follows sessions                      |
+| `git-desktop-id`             | `gitdeck.desktop`                   | git client shared by every session                         |
 | `session-desktop-ids`        | editor, browser, git                | whose windows are moved onto a session                     |
 | `claim-window-classes`       | empty                               | fallback for windows without an application                |
 | `claim-seconds`              | 25                                  | how long new windows are claimed                           |

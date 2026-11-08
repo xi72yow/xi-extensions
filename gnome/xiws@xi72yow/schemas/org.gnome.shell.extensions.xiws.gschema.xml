@@ -11,7 +11,7 @@
     </key>
     <key name="open-git" type="as">
       <default><![CDATA[['<Super>d']]]></default>
-      <summary>Open or focus the git client for the current session</summary>
+      <summary>Focus the git client wherever it lives, or open it on the current workspace</summary>
     </key>
     <key name="snap-presets" type="s">
       <default><![CDATA['[{"name":"Three column","tiles":[{"x":0,"y":0,"width":0.2185,"height":1},{"x":0.2185,"y":0,"width":0.5398,"height":1},{"x":0.7583,"y":0,"width":0.2417,"height":0.5},{"x":0.7583,"y":0.5,"width":0.2417,"height":0.5}]},{"name":"Halves","tiles":[{"x":0,"y":0,"width":0.5,"height":1},{"x":0.5,"y":0,"width":0.5,"height":1}]},{"name":"Third left","tiles":[{"x":0,"y":0,"width":0.33,"height":1},{"x":0.33,"y":0,"width":0.67,"height":1}]},{"name":"Two thirds left","tiles":[{"x":0,"y":0,"width":0.67,"height":1},{"x":0.67,"y":0,"width":0.33,"height":1}]}]']]></default>
@@ -122,18 +122,19 @@
       <summary>Desktop id used to detect whether the browser is already running</summary>
     </key>
     <key name="session-desktop-ids" type="as">
-      <default>['dev.zed.Zed.desktop','google-chrome.desktop','github-desktop.desktop']</default>
+      <default>['dev.zed.Zed.desktop','google-chrome.desktop','gitdeck.desktop']</default>
       <summary>Applications whose windows are moved onto the session workspace</summary>
       <description>Resolved through the shell window tracker, which knows the window to application mapping already.</description>
     </key>
     <key name="session-layout" type="s">
-      <default><![CDATA['[{"app":"google-chrome.desktop","x":0,"y":0,"width":0.5,"height":1},{"app":"dev.zed.Zed.desktop","x":0.5,"y":0,"width":0.5,"height":1},{"app":"github-desktop.desktop","center":true,"background":true}]']]></default>
+      <default><![CDATA['[{"app":"google-chrome.desktop","x":0,"y":0,"width":0.5,"height":1},{"app":"dev.zed.Zed.desktop","x":0.5,"y":0,"width":0.5,"height":1},{"app":"gitdeck.desktop","center":true}]']]></default>
       <summary>Slot per application, as a fraction of the work area</summary>
       <description>A JSON array of objects with app plus either x and y or center, and optionally width and height as fractions of the work area. Without width and height the window keeps its own size and is only moved. The flag background lowers it behind the others. Applications without an entry keep their placement, an empty array disables placement entirely.</description>
     </key>
     <key name="git-desktop-id" type="s">
-      <default>'github-desktop.desktop'</default>
-      <summary>Application that follows the active session instead of living on a workspace</summary>
+      <default>'gitdeck.desktop'</default>
+      <summary>Git client shared by every session, focused through open-git</summary>
+      <description>Never captured, started with a session or closed along with one, since a single instance covers every repository.</description>
     </key>
     <key name="claim-window-classes" type="as">
       <default>[]</default>
