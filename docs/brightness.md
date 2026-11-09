@@ -64,8 +64,6 @@ The location has no default, the repository is public.
 gsettings set org.gnome.shell.extensions.xiws brightness-location '52.52,13.40'
 ```
 
-With the extension installed through `build.sh`, the schema only lives in the extension directory and `gsettings` needs `--schemadir ~/.local/share/gnome-shell/extensions/xiws@xi72yow/schemas` in front of `set`.
-
 ## Requirements
 
 - `ddcutil`, recommended by the package

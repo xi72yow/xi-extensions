@@ -13,7 +13,7 @@ chrome/webtweaks/       collection of tweaks for individual websites
 debian/                 one source package, several binary packages
 docs/                   concepts and findings per extension
 scripts/                apt repository and installation
-build.sh                local installation for testing
+build.sh                local package build and installation
 Containerfile           build and lint environment used by CI
 ```
 
@@ -87,7 +87,13 @@ secret and published to GitHub Pages.
 gnome-extensions enable xiws@xi72yow
 ```
 
-The script installs the GNOME extensions into `~/.local/share/gnome-shell/extensions/` and compiles their schemas in place. On Wayland a new session is required afterwards, restarting the shell without logging out is not possible.
+The script builds the packages inside the container described by `Containerfile`, the same way CI does including `lintian`, and installs them through `apt`. A local build therefore runs exactly what a release would deliver, schema and Chrome extension included. It needs the CRX key, see above, and asks for `sudo` once to install.
+
+The version is derived rather than taken from `debian/changelog` as is: the newer of the changelog and the installed package gets a `+local<timestamp>` suffix. That sorts above the installed release, so an upgrade does not replace the local build with an older one, and below the next release, which supersedes it regularly. The changelog entry for it is only written into the build copy, the repository stays untouched.
+
+An earlier revision of the script copied the extensions into `~/.local/share/gnome-shell/extensions/`. GNOME Shell prefers the user scope over the system directories for the same UUID, so such a copy silently shadows the packaged extension and its schema. The script removes it after a successful installation. Settings are unaffected, since they live in dconf, as is the clipboard history in the runtime directory.
+
+On Wayland a new session is required afterwards, restarting the shell without logging out is not possible. Chrome picks up the new extension version on its next start.
 
 To look at a change without logging out there is a nested shell:
 
