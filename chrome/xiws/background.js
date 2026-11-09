@@ -33,11 +33,14 @@ function parseSentinel(rawUrl) {
   return { workspace, presets: url.searchParams.getAll('url') }
 }
 
+// a stored sentinel would open itself again on restore, which restores the
+// workspace again and loops until the browser locks up
 function isStorable(rawUrl) {
   if (!rawUrl) return false
 
   try {
-    return STORABLE_SCHEMES.includes(new URL(rawUrl).protocol)
+    const url = new URL(rawUrl)
+    return STORABLE_SCHEMES.includes(url.protocol) && url.hostname !== SENTINEL_HOST
   } catch {
     return false
   }
@@ -191,9 +194,12 @@ async function restore(sentinel, sentinelTab) {
   const { windowId, id: sentinelTabId } = sentinelTab
   const stored = await readState(sentinel.workspace)
 
-  // states written before duplicates were filtered may still carry them
+  // states written before these filters existed may still carry duplicates
+  // and sentinels
   const entries = uniqueByUrl(
-    stored?.tabs?.length ? stored.tabs : sentinel.presets.map((url) => ({ url })),
+    (stored?.tabs?.length ? stored.tabs : sentinel.presets.map((url) => ({ url }))).filter(
+      (entry) => isStorable(entry.url),
+    ),
   )
 
   await bindWindow(windowId, sentinel.workspace)

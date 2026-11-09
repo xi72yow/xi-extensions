@@ -279,9 +279,11 @@ Bookmarks are written when a workspace window closes, which is the point at whic
 
 **Duplicate tabs are closed on opening.** A tab whose URL is already open in the same window is removed right after creation, and the existing tab is activated if the new one would have been. Identical means the whole URL including query and fragment. The check only runs in `chrome.tabs.onCreated`, since closing a tab that navigated onto an open URL would discard its history. Among identical tabs the one with the lowest id is kept, so a burst opened at once still leaves exactly one instead of each tab seeing the others and all of them being closed.
 
-This was prompted by an external process opening the same GitHub Actions run several thousand times, which made Chrome unresponsive and filled the stored session. The cause of that burst could not be determined. Scoping the check to a window keeps the same page open in two workspaces possible.
+This was prompted by the same GitHub Actions run being opened several thousand times, which made Chrome unresponsive and filled the stored session. Scoping the check to a window keeps the same page open in two workspaces possible.
 
 Snapshots and restores additionally drop repeated URLs, so a state recorded before the check existed does not bring a burst back.
+
+**A sentinel is never stored.** The sentinel host counts as not storable, both for snapshots and for entries read back on restore. A sentinel URL that had made it into the state of `xi-extensions` turned out to be the actual cause of the bursts: restoring created a tab carrying it, `chrome.tabs.onCreated` took that tab for a new sentinel and restored the workspace again, without end. Every round reopened the other tabs of the workspace as well, which is how the Actions run multiplied. How the first sentinel got into the state could not be determined. A snapshot running while a restore is still creating tabs, before the sentinel tab is removed, appears to be a plausible path.
 
 Restored tabs are discarded once they have finished loading, which frees the memory behind them while title and favicon stay in the tab strip.
 
