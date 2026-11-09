@@ -1,3 +1,17 @@
+xi-extensions (0.1.3) unstable; urgency=medium
+
+  * feat: close duplicate tabs and drop repeated urls from stored state
+  * feat: replace github desktop with gitdeck as the shared git client
+  * fix: set luminance only for the active colour mode
+  * feat: add an optional panel indicator and show the curve offset
+  * feat: split brightness between panel and signal, write contrast on release
+  * fix: build the display config proxy asynchronously and floor the luminance
+  * fix: follow late display config changes for signal dimming
+  * feat: add signal dimming and contrast sliders to the brightness menu
+  * fix: throttle brightness writes while the slider is dragged
+
+ -- xi72yow <65042627+xi72yow@users.noreply.github.com>  Sun, 08 Nov 2026 22:34:26 +0000
+
 xi-extensions (0.1.2) unstable; urgency=medium
 
   * feat: rework the picker into a tile grid with a header toolbar
