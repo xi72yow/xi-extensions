@@ -1291,22 +1291,31 @@ const WorkspacePicker = GObject.registerClass(
     }
 
     // the git client gives an overview across every repository, so it is a
-    // single instance focused wherever it lives instead of following sessions
+    // single instance fetched onto the active workspace on demand instead of
+    // following every switch
     focusGit() {
       const app = Shell.AppSystem.get_default().lookup_app(
         this._settings.get_string('git-desktop-id'),
       )
       if (!app) return
 
+      const active = global.workspace_manager.get_active_workspace()
+
+      // captured arrangements never hold the git client, so its slot only
+      // exists in the configured default
+      const layout = parseLayout(this._settings.get_string('session-layout'))
+
       const [recent] = app.get_windows()
       if (recent) {
+        if (!recent.is_on_all_workspaces() && recent.get_workspace() !== active) {
+          recent.change_workspace(active)
+          placeWindow(recent, layout)
+        }
         Main.activateWindow(recent, global.get_current_time())
         return
       }
 
-      const active = global.workspace_manager.get_active_workspace()
       const session = this._sessionForWorkspace(active)
-      const layout = session ? this._layoutFor(session) : []
 
       this._claimWindows(active, layout, [app.get_id()])
 

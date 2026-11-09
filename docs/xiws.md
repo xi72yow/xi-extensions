@@ -100,9 +100,9 @@ An earlier revision treated the first browser window as an untracked default ses
 | ------- | ------------------------------------------------------ | ------------------------------ |
 | Zed     | one window per workspace, stays on its GNOME workspace | `zed --new <path>`             |
 | Chrome  | one window per workspace, stays put, default profile   | sentinel URL, see below        |
-| gitdeck | single instance, stays where it is                     | desktop entry, `--open <path>` |
+| gitdeck | single instance, fetched on demand                     | desktop entry, `--open <path>` |
 
-gitdeck shows every repository at once and updates them in one go, so it is not bound to a session and does not follow workspace switches. `<Super>D` focuses it wherever it lives.
+gitdeck shows every repository at once and updates them in one go, so it is not bound to a session and does not follow workspace switches. `<Super>D` fetches it onto the active workspace.
 
 GitHub Desktop held this role before. It could only show one repository at a time, which is why it used to follow sessions: on every switch the repository was changed and the window pulled onto the active workspace. That brought it to the front on each switch, and it is no longer needed with a client that gives the overview by itself.
 
@@ -160,16 +160,16 @@ Their height follows the aspect ratio of the work area rather than being fixed. 
 
 ## Shortcuts
 
-| Binding    | Effect                                                               |
-| ---------- | -------------------------------------------------------------------- |
-| `<Super>W` | open the workspace picker                                            |
-| `<Super>C` | open the clipboard history                                           |
-| `<Super>E` | focus the browser of the current session, or open it there           |
-| `<Super>D` | focus the git client wherever it lives, or open it on this workspace |
+| Binding    | Effect                                                     |
+| ---------- | ---------------------------------------------------------- |
+| `<Super>W` | open the workspace picker                                  |
+| `<Super>C` | open the clipboard history                                 |
+| `<Super>E` | focus the browser of the current session, or open it there |
+| `<Super>D` | fetch the git client onto this workspace, or open it here  |
 
 The browser shortcut looks for a matching window on the active workspace first and only launches when none is there. Launching goes through the session context, so the browser gets the sentinel URL of that session. Outside a session it simply opens a plain window.
 
-The git client shortcut looks for its window on any workspace, since there is only one, and activating it switches to wherever it sits. Only when it is not running is it started on the active workspace. Inside a session the project path is handed over as a file, so the desktop entry decides how it ends up on the command line.
+The git client shortcut looks for its window on any workspace, since there is only one, moves it onto the active workspace and focuses it there. Only when it is not running is it started on the active workspace. An earlier revision only activated the window, which switched to wherever it sat and pulled the user away from the session. Placement always comes from `session-layout`, since a captured arrangement never holds the git client. Inside a session the project path is handed over as a file, so the desktop entry decides how it ends up on the command line.
 
 All four are free of system bindings. `<Super>B` was the obvious choice for the browser but is taken by `media-keys www`, and `<Super>V` by `toggle-message-tray`. C, D and E sit together on the keyboard, which keeps the three application shortcuts within one hand position.
 
@@ -331,7 +331,7 @@ All of these live under `/org/gnome/shell/extensions/xiws/` and can be dumped wi
 | `toggle-picker`              | `<Super>W`                          | open the workspace picker                                  |
 | `toggle-clipboard`           | `<Super>C`                          | open the clipboard history                                 |
 | `open-browser`               | `<Super>E`                          | browser of the current session                             |
-| `open-git`                   | `<Super>D`                          | focus the git client, wherever it lives                    |
+| `open-git`                   | `<Super>D`                          | fetch the git client onto the active workspace             |
 | `search-paths`               | `~/Schreibtisch`, `~/Workplace`     | where repositories are looked for                          |
 | `search-depth`               | 3                                   | levels below a search path                                 |
 | `search-exclude`             | `node_modules` and similar          | never descended into                                       |

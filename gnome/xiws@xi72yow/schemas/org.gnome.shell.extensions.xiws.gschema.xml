@@ -11,7 +11,7 @@
     </key>
     <key name="open-git" type="as">
       <default><![CDATA[['<Super>d']]]></default>
-      <summary>Focus the git client wherever it lives, or open it on the current workspace</summary>
+      <summary>Fetch the git client onto the current workspace, or open it there</summary>
     </key>
     <key name="snap-presets" type="s">
       <default><![CDATA['[{"name":"Three column","tiles":[{"x":0,"y":0,"width":0.2185,"height":1},{"x":0.2185,"y":0,"width":0.5398,"height":1},{"x":0.7583,"y":0,"width":0.2417,"height":0.5},{"x":0.7583,"y":0.5,"width":0.2417,"height":0.5}]},{"name":"Halves","tiles":[{"x":0,"y":0,"width":0.5,"height":1},{"x":0.5,"y":0,"width":0.5,"height":1}]},{"name":"Third left","tiles":[{"x":0,"y":0,"width":0.33,"height":1},{"x":0.33,"y":0,"width":0.67,"height":1}]},{"name":"Two thirds left","tiles":[{"x":0,"y":0,"width":0.67,"height":1},{"x":0.67,"y":0,"width":0.33,"height":1}]}]']]></default>
