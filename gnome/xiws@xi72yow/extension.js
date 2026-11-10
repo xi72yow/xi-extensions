@@ -1305,25 +1305,33 @@ const WorkspacePicker = GObject.registerClass(
       // exists in the configured default
       const layout = parseLayout(this._settings.get_string('session-layout'))
 
+      const session = this._sessionForWorkspace(active)
       const [recent] = app.get_windows()
-      if (recent) {
-        if (!recent.is_on_all_workspaces() && recent.get_workspace() !== active) {
-          recent.change_workspace(active)
-          placeWindow(recent, layout)
-        }
-        Main.activateWindow(recent, global.get_current_time())
+
+      if (!recent) {
+        this._claimWindows(active, layout, [app.get_id()])
+        this._openInGit(app, active, session)
         return
       }
 
-      const session = this._sessionForWorkspace(active)
+      // moved before the repository is handed over: the git client asks for
+      // focus when it switches, and the shell follows that request to
+      // whichever workspace the window sits on
+      if (!recent.is_on_all_workspaces() && recent.get_workspace() !== active) {
+        recent.change_workspace(active)
+        placeWindow(recent, layout)
+      }
+      Main.activateWindow(recent, global.get_current_time())
+      if (session) this._openInGit(app, active, session)
+    }
 
-      this._claimWindows(active, layout, [app.get_id()])
-
-      // handed over as a file so the desktop entry decides how a repository
-      // is passed on the command line
+    // handed over as a file so the desktop entry decides how a repository is
+    // passed on the command line. a running instance takes it over and
+    // switches to that repository
+    _openInGit(app, workspace, session) {
       const files = session ? [Gio.File.new_for_path(session.path)] : []
       try {
-        app.get_app_info().launch(files, global.create_app_launch_context(0, active.index()))
+        app.get_app_info().launch(files, global.create_app_launch_context(0, workspace.index()))
       } catch (error) {
         logError(error, `xiws: failed to launch ${app.get_id()}`)
       }

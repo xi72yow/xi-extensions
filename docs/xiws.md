@@ -169,7 +169,9 @@ Their height follows the aspect ratio of the work area rather than being fixed. 
 
 The browser shortcut looks for a matching window on the active workspace first and only launches when none is there. Launching goes through the session context, so the browser gets the sentinel URL of that session. Outside a session it simply opens a plain window.
 
-The git client shortcut looks for its window on any workspace, since there is only one, moves it onto the active workspace and focuses it there. Only when it is not running is it started on the active workspace. An earlier revision only activated the window, which switched to wherever it sat and pulled the user away from the session. Placement always comes from `session-layout`, since a captured arrangement never holds the git client. Inside a session the project path is handed over as a file, so the desktop entry decides how it ends up on the command line.
+The git client shortcut looks for its window on any workspace, since there is only one, moves it onto the active workspace and focuses it there. Inside a session the project path is then handed over as a file, so the desktop entry decides how it ends up on the command line, and the running instance switches to that repository. Only when it is not running is it started on the active workspace, with the same path. Placement always comes from `session-layout`, since a captured arrangement never holds the git client.
+
+The order matters. gitdeck asks for focus when it switches repository, and the shell follows that request to whichever workspace the window sits on. Handing the path over first pulled the user onto the workspace of the git client. An earlier revision only activated the window, with the same effect and without switching the repository.
 
 All four are free of system bindings. `<Super>B` was the obvious choice for the browser but is taken by `media-keys www`, and `<Super>V` by `toggle-message-tray`. C, D and E sit together on the keyboard, which keeps the three application shortcuts within one hand position.
 
