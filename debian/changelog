@@ -1,3 +1,10 @@
+xi-extensions (0.1.5) unstable; urgency=medium
+
+  * fix: hand the session repository to gitdeck after fetching its window
+  * feat: fetch the git client onto the active workspace on super+d
+
+ -- xi72yow <65042627+xi72yow@users.noreply.github.com>  Tue, 10 Nov 2026 22:29:53 +0000
+
 xi-extensions (0.1.4) unstable; urgency=medium
 
   * build: install local builds as packages instead of a user scope copy
