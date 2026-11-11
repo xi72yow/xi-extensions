@@ -201,7 +201,9 @@ jobs:
           fi
 
           MAINTAINER=$(dpkg-parsechangelog -l debian/changelog -S Maintainer)
-          ENTRIES=$(git log $RANGE --no-merges --pretty=format:'  * %s')
+          # lintian fails on changelog lines over 80 characters, a long
+          # subject is wrapped onto an indented continuation line instead
+          ENTRIES=$(git log $RANGE --no-merges --pretty=format:'%w(78,2,4)* %s')
           if [ -z "$ENTRIES" ]; then
             ENTRIES="  * No changes recorded since ${LAST_TAG}."
           fi
