@@ -150,7 +150,7 @@ The close button is placed over the thumbnail through a `Clutter.BinLayout` rath
 
 Keyboard navigation stays linear across the grid: Up and Down step through the entries in reading order rather than by column, since Right is already taken by the detail view.
 
-Sessions are held as a map from project name to `Meta.Workspace`. The object reference is stored rather than the index, because indices shift when dynamic workspaces are added or removed. A session is dropped as soon as its workspace no longer exists or holds no windows, so closing everything on a workspace ends the session implicitly.
+Sessions are held as a map from project name to `Meta.Workspace`. The object reference is stored rather than the index, because indices shift when dynamic workspaces are added or removed. A session is dropped as soon as its workspace no longer exists or holds no windows, so closing everything on a workspace ends the session implicitly. A freshly started session is exempt until its workspace held windows once or `claim-seconds` ran out. Since the panel reads the active session right after the start, before editor and browser exist, it was otherwise dropped in the same moment it was created, and only its colour remained.
 
 Activating a session switches to its workspace instead of launching anything again.
 

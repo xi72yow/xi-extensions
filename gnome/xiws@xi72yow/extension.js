@@ -1128,13 +1128,25 @@ const WorkspacePicker = GObject.registerClass(
     // otherwise hold on to its name and keep its project from being adopted
     _liveSessions() {
       for (const [name, session] of this._sessions) {
-        if (!workspaceExists(session.workspace) || !isOccupied(session.workspace)) {
-          this._sessions.delete(name)
-        }
+        if (this._isStale(session)) this._sessions.delete(name)
       }
       this._adoptOrphans()
 
       return [...this._sessions.values()].sort((a, b) => a.workspace.index() - b.workspace.index())
+    }
+
+    // a fresh session is empty until its applications have started, which
+    // must not count as closed. it is stale once its workspace is gone, or
+    // empty after having held windows or after the claim period ran out
+    _isStale(session) {
+      if (!workspaceExists(session.workspace)) return true
+      if (isOccupied(session.workspace)) {
+        session.settled = true
+        return false
+      }
+
+      const claimMs = Math.max(this._settings.get_int('claim-seconds'), 1) * 1000
+      return session.settled || GLib.get_monotonic_time() / 1000 - session.startedMs > claimMs
     }
 
     // sessions live in memory only, so a restart or the lock screen, which
@@ -1159,6 +1171,7 @@ const WorkspacePicker = GObject.registerClass(
           path: project.path,
           workspace: target,
           color: this._colors.assign(project.name),
+          settled: true,
         })
       }
     }
@@ -1479,6 +1492,8 @@ const WorkspacePicker = GObject.registerClass(
         path: workspace.path,
         workspace: target,
         color: this._colors.assign(workspace.name),
+        settled: false,
+        startedMs: GLib.get_monotonic_time() / 1000,
       })
       this._rememberWorkspace(workspace.name)
       this.emit('sessions-changed')
