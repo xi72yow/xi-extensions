@@ -145,6 +145,11 @@
       <default>[]</default>
       <summary>Recently opened workspaces, most recent first</summary>
     </key>
+    <key name="session-colors" type="a{ss}">
+      <default>{}</default>
+      <summary>Fixed colour of each repository, keyed by its name</summary>
+      <description>Assigned once when a repository is first opened and kept from then on, so a project is recognised by its colour. Editing an entry changes the colour for good.</description>
+    </key>
     <key name="recent-count" type="i">
       <default>9</default>
       <summary>How many recent workspaces are listed while the search is empty</summary>

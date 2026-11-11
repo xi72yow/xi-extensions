@@ -1,5 +1,6 @@
 /* colours, focus rings and accent handling come from the shell classes the
-   widgets carry, so only layout is defined here */
+   widgets carry, so only layout is defined here. the session colour is the
+   exception, set inline from lib/session.js */
 
 /* the width itself is set in pickerWidth(), computed from the card metrics.
    this only lifts the 28em cap the shell theme puts on a dialog, which would
@@ -183,4 +184,45 @@
 /* the level beside the panel icon, see brightness-indicator */
 .xiws-panel-level {
   margin-right: 2px;
+}
+
+/* the colour of a session, see lib/session.js */
+.xiws-session-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+}
+
+.xiws-session-title {
+  spacing: 6px;
+}
+
+/* the background is set inline from lib/session.js, this only fades between
+   two sessions instead of cutting */
+#panel.xiws-panel {
+  transition-duration: 250ms;
+}
+
+/* the theme hardcodes a white foreground and white hover overlays for the
+   panel, which disappear on the lighter colours of the palette */
+#panel.xiws-panel-dark .panel-button {
+  color: #000000;
+}
+
+#panel.xiws-panel-dark .panel-button#panelActivities .workspace-dot {
+  background-color: #000000;
+}
+
+#panel.xiws-panel-dark .panel-button:focus,
+#panel.xiws-panel-dark .panel-button:hover,
+#panel.xiws-panel-dark .panel-button.clock-display:focus .clock,
+#panel.xiws-panel-dark .panel-button.clock-display:hover .clock {
+  box-shadow: inset 0 0 0 100px rgba(0, 0, 0, 0.12);
+}
+
+#panel.xiws-panel-dark .panel-button:active,
+#panel.xiws-panel-dark .panel-button:checked,
+#panel.xiws-panel-dark .panel-button.clock-display:active .clock,
+#panel.xiws-panel-dark .panel-button.clock-display:checked .clock {
+  box-shadow: inset 0 0 0 100px rgba(0, 0, 0, 0.2);
 }

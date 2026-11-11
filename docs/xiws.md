@@ -183,6 +183,24 @@ Arriving at a workspace that belongs to a session moves it to the front of `rece
 
 Activating a session from the picker therefore only activates its workspace, everything else happens in the switch handler.
 
+## Session indicator
+
+The panel names the active workspace next to the workspace dots on the left and takes on the colour of its session as a whole. A workspace without a session is named by its position, `Workspace 3`, and keeps the plain panel, as does the reserved workspace. A click opens the picker, the indicator has no menu of its own. The implementation sits in `lib/session.js`.
+
+A tinted bar is noticed from the corner of the eye, while a dot beside the name only answers once one looks at it. The same colour appears as a dot in front of the name on the picker card and on the project tile, which ties both to the panel without reading either label.
+
+**The palette is Paul Tol's muted scheme**, nine colours without the pale grey he reserves for missing data. Research on categorical colour coding tends to put the limit of what is told apart at a glance at five to nine colours: Healey found seven carefully chosen colours to be identified preattentively, Smallman and Boynton up to nine. Larger sets such as Kelly's 22 colours were designed for large patches and lose distinctness at panel size. Tol's schemes are additionally built to stay distinct under the common colour vision deficiencies. Muted was preferred over his bright scheme or Okabe-Ito because it is calmer as a full width background and offers nine instead of seven colours.
+
+The palette spans dark colours such as indigo and wine and light ones such as cyan and sand, so a fixed panel foreground cannot work. The text colour is chosen per colour by the WCAG contrast ratio against black and white. All nine reach at least 5.3:1. For the light colours the class `xiws-panel-dark` switches labels, icons, the workspace dots and the hover overlays to black, since the theme hardcodes all of them in white. The background is set inline on `Main.panel`, the style found at enable time is kept and restored. Another extension styling the panel inline at the same time would likely conflict. In the overview the inline background also overrides the transparent panel of the theme, which keeps the session visible there.
+
+The colour is assigned once, when a repository is first opened as a session, and stored in `session-colors` keyed by the repository name. From then on it does not change, not even when another open session carries the same colour. Recognising a project by its colour only works if the colour is stable, so stability is preferred over uniqueness here.
+
+The first assignment takes the colour least used among the nine most recently opened repositories, as many as the palette holds, since those are the ones likely to be open beside the new one. Among equally used colours an FNV-1a hash of the name decides, otherwise every fresh setup would hand out the palette in order. Repositories that are often open together therefore tend to differ in colour, a collision remains possible. An entry can be changed or removed through `gsettings` or dconf, a removed entry is assigned again on the next opening. The map is not pruned, an entry per repository seems negligible.
+
+The label is refreshed on `workspace-switched`, on `notify::n-workspaces` and on the `sessions-changed` signal of the picker. The workspace count matters because removing a dynamic workspace renumbers the ones after it without a switch. Closing the last window of a session does not refresh the label by itself. The session is only pruned on the next refresh, which seems acceptable, since that state usually ends with a switch anyway.
+
+A project tile carries its dot only once the repository has been opened, a tile without an assigned colour shows none.
+
 ## Snapping
 
 Holding a modifier while dragging a window highlights the zone under the pointer and places the window there on release. `snap-modifier` selects the key, Control by default.
@@ -219,7 +237,7 @@ Previews here use the aspect ratio of the individual window rather than that of 
 
 The dialog reuses the style classes of the shell instead of defining its own appearance. `search-entry` for the search field, `list-search-result` with `list-search-result-title` and `list-search-result-description` for the rows, and `icon-button` for the close button. Focus rings, hover states, the accent colour and the switch between light and dark are inherited that way and need no maintenance.
 
-The extension stylesheet therefore contains layout only, no colours. Hardcoding them would break both the light theme and user themes, and the shell resolves accent colours through its own CSS functions such as `-st-accent-color`, which are not worth reproducing.
+The extension stylesheet therefore contains layout only, no colours. The one exception is the session colour on the panel and the picker cards, set from `lib/session.js` because it identifies a session rather than styling a widget. Hardcoding them would break both the light theme and user themes, and the shell resolves accent colours through its own CSS functions such as `-st-accent-color`, which are not worth reproducing.
 
 The theme shipped with the running shell is the reference for this, readable through `gresource extract /usr/share/gnome-shell/gnome-shell-theme.gresource /org/gnome/shell/theme/gnome-shell-dark.css`. That is more reliable than any guide, since it matches the installed version.
 
@@ -338,6 +356,7 @@ All of these live under `/org/gnome/shell/extensions/xiws/` and can be dumped wi
 | `search-depth`               | 3                                   | levels below a search path                                 |
 | `search-exclude`             | `node_modules` and similar          | never descended into                                       |
 | `recent-workspaces`          | empty                               | most recently opened, written automatically                |
+| `session-colors`             | empty                               | fixed colour per repository, written on first opening      |
 | `recent-count`               | 9                                   | how many are listed without a search, three full tile rows |
 | `home-label`                 | Persönlich                          | name of the reserved workspace                             |
 | `first-workspace-index`      | 1                                   | lowest workspace usable for sessions                       |

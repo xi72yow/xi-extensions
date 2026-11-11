@@ -14,6 +14,7 @@ import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js'
 import { SearchDialog } from './lib/searchDialog.js'
 import { ClipboardHistory, ClipboardIndicator } from './lib/clipboard.js'
 import { BrightnessController, BrightnessIndicator } from './lib/brightness.js'
+import { SessionColors, SessionIndicator, colorDot } from './lib/session.js'
 
 const TOGGLE_PICKER = 'toggle-picker'
 const OPEN_BROWSER = 'open-browser'
@@ -684,6 +685,17 @@ const SessionDetail = GObject.registerClass(
   },
 )
 
+function coloredTitle(text, color) {
+  const title = new St.BoxLayout({ style_class: 'xiws-session-title' })
+  title.add_child(colorDot(color))
+
+  const label = ellipsized(text, 'list-search-result-title')
+  label.x_expand = true
+  title.add_child(label)
+
+  return title
+}
+
 const SessionRow = GObject.registerClass(
   {
     Signals: { closed: {} },
@@ -735,7 +747,7 @@ const SessionRow = GObject.registerClass(
         width: THUMB_WIDTH,
         style_class: 'list-search-result-content',
       })
-      labels.add_child(ellipsized(session.name, 'list-search-result-title'))
+      labels.add_child(coloredTitle(session.name, session.color))
       labels.add_child(
         ellipsized(`Workspace ${session.workspace.index() + 1}`, 'list-search-result-description'),
       )
@@ -760,7 +772,7 @@ const SessionRow = GObject.registerClass(
 // is the search root alone, since the path below it only repeats the name.
 const WorkspaceTile = GObject.registerClass(
   class WorkspaceTile extends St.Button {
-    _init(workspace) {
+    _init(workspace, color) {
       super._init({
         style_class: 'list-search-result xiws-tile',
         can_focus: true,
@@ -775,7 +787,7 @@ const WorkspaceTile = GObject.registerClass(
         width: tileWidth(),
         style_class: 'list-search-result-content',
       })
-      box.add_child(ellipsized(workspace.name, 'list-search-result-title'))
+      box.add_child(coloredTitle(workspace.name, color))
       box.add_child(ellipsized(workspace.root ?? '', 'list-search-result-description'))
 
       this.set_child(box)
@@ -784,6 +796,9 @@ const WorkspaceTile = GObject.registerClass(
 )
 
 const WorkspacePicker = GObject.registerClass(
+  {
+    Signals: { 'sessions-changed': {} },
+  },
   class WorkspacePicker extends SearchDialog {
     _init(settings) {
       super._init({ hint: 'Workspace' })
@@ -791,6 +806,7 @@ const WorkspacePicker = GObject.registerClass(
       this._settings = settings
       this._workspaces = []
       this._sessions = new Map()
+      this._colors = new SessionColors(settings)
       this._activeSession = null
       this._claimHandlerId = 0
       this._claims = []
@@ -999,6 +1015,7 @@ const WorkspacePicker = GObject.registerClass(
       this._sessions.delete(session.name)
       this._focusAfterClose(closedIndex)
       this.render()
+      this.emit('sessions-changed')
     }
 
     // closing every session at once, which is also the way back to a clean
@@ -1032,6 +1049,7 @@ const WorkspacePicker = GObject.registerClass(
 
       this._homeWorkspace()?.activate(time)
       this.render()
+      this.emit('sessions-changed')
     }
 
     _homeIndex() {
@@ -1048,7 +1066,12 @@ const WorkspacePicker = GObject.registerClass(
       const workspace = this._homeWorkspace()
       if (!workspace) return null
 
-      return { name: this._settings.get_string('home-label'), path: null, workspace }
+      return {
+        name: this._settings.get_string('home-label'),
+        path: null,
+        workspace,
+        color: null,
+      }
     }
 
     // the reserved workspace is restored like a session, but nothing is
@@ -1158,9 +1181,13 @@ const WorkspacePicker = GObject.registerClass(
       )
 
       for (const workspace of projects) {
-        this.addRow(new WorkspaceTile(workspace), () => this._open(workspace), {
-          columns: PROJECT_COLUMNS,
-        })
+        this.addRow(
+          new WorkspaceTile(workspace, this._colors.stored(workspace.name)),
+          () => this._open(workspace),
+          {
+            columns: PROJECT_COLUMNS,
+          },
+        )
       }
 
       if (this._rows.length === 0) this.addHeading('Nichts gefunden')
@@ -1197,9 +1224,13 @@ const WorkspacePicker = GObject.registerClass(
       this.addHeading('Zuletzt verwendet')
 
       for (const workspace of remaining) {
-        this.addRow(new WorkspaceTile(workspace), () => this._open(workspace), {
-          columns: PROJECT_COLUMNS,
-        })
+        this.addRow(
+          new WorkspaceTile(workspace, this._colors.stored(workspace.name)),
+          () => this._open(workspace),
+          {
+            columns: PROJECT_COLUMNS,
+          },
+        )
       }
     }
 
@@ -1235,6 +1266,16 @@ const WorkspacePicker = GObject.registerClass(
       }
 
       return null
+    }
+
+    // what the panel shows for the active workspace. one without a session
+    // is named by its position and carries no colour
+    activeSession() {
+      const active = global.workspace_manager.get_active_workspace()
+      if (active === this._homeWorkspace()) return this._homeSession()
+
+      const session = this._liveSessions().find((live) => live.workspace === active)
+      return session ?? { name: `Workspace ${active.index() + 1}`, color: null }
     }
 
     // reacting to the switch itself rather than to a shortcut covers every
@@ -1370,8 +1411,10 @@ const WorkspacePicker = GObject.registerClass(
         name: workspace.name,
         path: workspace.path,
         workspace: target,
+        color: this._colors.assign(workspace.name),
       })
       this._rememberWorkspace(workspace.name)
+      this.emit('sessions-changed')
 
       this._runLaunchSteps(
         this._launchSteps(wanted, { name: workspace.name, path: workspace.path, index }),
@@ -1525,9 +1568,18 @@ export default class XiwsExtension extends Extension {
     )
     this._bind(OPEN_GIT, () => this._picker.focusGit())
 
-    this._switchHandlerId = global.workspace_manager.connect('workspace-switched', () =>
-      this._picker.onWorkspaceSwitched(),
-    )
+    this._sessionIndicator = new SessionIndicator(() => this._picker.toggle())
+    Main.panel.addToStatusArea('xiws-session', this._sessionIndicator, 1, 'left')
+    const showSession = () => this._sessionIndicator.setSession(this._picker.activeSession())
+
+    this._switchHandlerId = global.workspace_manager.connect('workspace-switched', () => {
+      this._picker.onWorkspaceSwitched()
+      showSession()
+    })
+    // removing a workspace renumbers the ones after it without a switch
+    this._countHandlerId = global.workspace_manager.connect('notify::n-workspaces', showSession)
+    this._picker.connect('sessions-changed', showSession)
+    showSession()
 
     this._snapAssist = new SnapAssist(this._settings)
 
@@ -1558,10 +1610,14 @@ export default class XiwsExtension extends Extension {
     this._snapAssist?.destroy()
     this._snapAssist = null
 
-    if (this._switchHandlerId) {
-      global.workspace_manager.disconnect(this._switchHandlerId)
-      this._switchHandlerId = 0
+    for (const id of [this._switchHandlerId, this._countHandlerId]) {
+      if (id) global.workspace_manager.disconnect(id)
     }
+    this._switchHandlerId = 0
+    this._countHandlerId = 0
+
+    this._sessionIndicator?.destroy()
+    this._sessionIndicator = null
 
     for (const name of KEYBINDINGS) Main.wm.removeKeybinding(name)
 
