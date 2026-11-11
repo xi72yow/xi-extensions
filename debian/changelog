@@ -1,3 +1,11 @@
+xi-extensions (0.1.6) unstable; urgency=medium
+
+  * ci: wrap long commit subjects in the generated changelog
+  * feat: tint the panel in a fixed colour per repository and name the active
+    session
+
+ -- xi72yow <65042627+xi72yow@users.noreply.github.com>  Wed, 11 Nov 2026 13:36:41 +0000
+
 xi-extensions (0.1.5) unstable; urgency=medium
 
   * fix: hand the session repository to gitdeck after fetching its window
