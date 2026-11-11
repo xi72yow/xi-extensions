@@ -186,15 +186,11 @@
   margin-right: 2px;
 }
 
-/* the colour of a session, see lib/session.js */
-.xiws-session-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 5px;
-}
-
-.xiws-session-title {
-  spacing: 6px;
+/* the inside a session colour fills, see tintCard. every card carries it so
+   tinted and plain ones keep the same size, INNER_PADDING mirrors it */
+.xiws-card-inner {
+  border-radius: 6px;
+  padding: 6px;
 }
 
 /* the background is set inline from lib/session.js, this only fades between

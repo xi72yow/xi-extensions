@@ -14,7 +14,7 @@ import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js'
 import { SearchDialog } from './lib/searchDialog.js'
 import { ClipboardHistory, ClipboardIndicator } from './lib/clipboard.js'
 import { BrightnessController, BrightnessIndicator } from './lib/brightness.js'
-import { SessionColors, SessionIndicator, colorDot } from './lib/session.js'
+import { SessionColors, SessionIndicator, sessionPaint } from './lib/session.js'
 
 const TOGGLE_PICKER = 'toggle-picker'
 const OPEN_BROWSER = 'open-browser'
@@ -56,6 +56,8 @@ const PRESET_ICON_HEIGHT = 32
 // dialog width is computed from them rather than stated in em: the cards are
 // measured in pixels and an em width drifts against them with the font size
 const CARD_PADDING = 8
+// matches .xiws-card-inner, the inside a session colour fills
+const INNER_PADDING = 6
 const GRID_SPACING = 12
 const SCROLLBAR_RESERVE = 16
 
@@ -121,6 +123,12 @@ function visibleWindows(workspace) {
   return workspace
     .list_windows()
     .filter((window) => !window.is_skip_taskbar() && !window.is_on_all_workspaces())
+}
+
+// zed titles a window with the root folders of its project, separated by
+// commas, followed by the active file after an em dash
+function projectFolder(title) {
+  return (title ?? '').split(' \u2014 ')[0].split(', ')[0].trim()
 }
 
 function isOccupied(workspace) {
@@ -255,7 +263,7 @@ function launch(commandline, workspaceIndex) {
 // theme scale factor, so the two parts of the sum are not in the same unit
 function pickerWidth() {
   const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor
-  const card = THUMB_WIDTH + 2 * CARD_PADDING * scale
+  const card = THUMB_WIDTH + 2 * (CARD_PADDING + INNER_PADDING) * scale
   const gaps = (SESSION_COLUMNS - 1) * GRID_SPACING + SCROLLBAR_RESERVE
 
   return Math.round(SESSION_COLUMNS * card + gaps * scale)
@@ -685,15 +693,16 @@ const SessionDetail = GObject.registerClass(
   },
 )
 
-function coloredTitle(text, color) {
-  const title = new St.BoxLayout({ style_class: 'xiws-session-title' })
-  title.add_child(colorDot(color))
+// the colour fills the inside of a card, the button around it keeps the
+// padding where the shell draws hover and focus
+function tintCard(box, color) {
+  if (!color) return
 
-  const label = ellipsized(text, 'list-search-result-title')
-  label.x_expand = true
-  title.add_child(label)
-
-  return title
+  const { background, foreground } = sessionPaint(color)
+  box.style = `background-color: ${background};`
+  for (const label of box.get_children().flatMap((child) => [child, ...child.get_children()])) {
+    if (label instanceof St.Label) label.style = `color: ${foreground};`
+  }
 }
 
 const SessionRow = GObject.registerClass(
@@ -712,7 +721,10 @@ const SessionRow = GObject.registerClass(
       this.session = session
       this.closable = closable
 
-      const box = new St.BoxLayout({ vertical: true, style_class: 'xiws-session-box' })
+      const box = new St.BoxLayout({
+        vertical: true,
+        style_class: 'xiws-session-box xiws-card-inner',
+      })
 
       // the close button sits on the thumbnail rather than next to the
       // labels. sharing a row with them, its width competed with their
@@ -747,10 +759,11 @@ const SessionRow = GObject.registerClass(
         width: THUMB_WIDTH,
         style_class: 'list-search-result-content',
       })
-      labels.add_child(coloredTitle(session.name, session.color))
+      labels.add_child(ellipsized(session.name, 'list-search-result-title'))
       labels.add_child(
         ellipsized(`Workspace ${session.workspace.index() + 1}`, 'list-search-result-description'),
       )
+      tintCard(box, session.color)
 
       box.add_child(labels)
       this.set_child(box)
@@ -785,10 +798,11 @@ const WorkspaceTile = GObject.registerClass(
       const box = new St.BoxLayout({
         vertical: true,
         width: tileWidth(),
-        style_class: 'list-search-result-content',
+        style_class: 'list-search-result-content xiws-card-inner',
       })
-      box.add_child(coloredTitle(workspace.name, color))
+      box.add_child(ellipsized(workspace.name, 'list-search-result-title'))
       box.add_child(ellipsized(workspace.root ?? '', 'list-search-result-description'))
+      tintCard(box, color)
 
       this.set_child(box)
     }
@@ -1110,18 +1124,70 @@ const WorkspacePicker = GObject.registerClass(
       target?.activate(global.get_current_time())
     }
 
+    // pruned before adopting: a session left on an emptied workspace would
+    // otherwise hold on to its name and keep its project from being adopted
     _liveSessions() {
-      const live = []
-
       for (const [name, session] of this._sessions) {
         if (!workspaceExists(session.workspace) || !isOccupied(session.workspace)) {
           this._sessions.delete(name)
-          continue
         }
-        live.push(session)
+      }
+      this._adoptOrphans()
+
+      return [...this._sessions.values()].sort((a, b) => a.workspace.index() - b.workspace.index())
+    }
+
+    // sessions live in memory only, so a restart or the lock screen, which
+    // disables the extension, forgets them while the editor restores its
+    // windows on its own. a workspace without a session is therefore taken
+    // over by the project its editor window shows
+    _adoptOrphans() {
+      const manager = global.workspace_manager
+      const claimed = new Set([...this._sessions.values()].map((session) => session.workspace))
+
+      for (let index = 0; index < manager.get_n_workspaces(); index++) {
+        const target = manager.get_workspace_by_index(index)
+        if (index === this._homeIndex() || claimed.has(target)) continue
+
+        const project = this._editorWindows(target)
+          .map(({ project }) => project)
+          .find((project) => !this._sessions.has(project.name))
+        if (!project) continue
+
+        this._sessions.set(project.name, {
+          name: project.name,
+          path: project.path,
+          workspace: target,
+          color: this._colors.assign(project.name),
+        })
+      }
+    }
+
+    // editor windows with the project they show, all workspaces unless one
+    // is given. a folder name shared by two repositories matches neither
+    _editorWindows(workspace = null) {
+      if (this._workspaces.length === 0) this._rescan()
+
+      const byFolder = new Map()
+      for (const project of this._workspaces) {
+        const folder = GLib.path_get_basename(project.path)
+        byFolder.set(folder, byFolder.has(folder) ? null : project)
       }
 
-      return live.sort((a, b) => a.workspace.index() - b.workspace.index())
+      const editorId = this._settings.get_string('editor-desktop-id')
+      const tracker = Shell.WindowTracker.get_default()
+      const manager = global.workspace_manager
+      const workspaces = workspace
+        ? [workspace]
+        : Array.from({ length: manager.get_n_workspaces() }, (_, index) =>
+            manager.get_workspace_by_index(index),
+          )
+
+      return workspaces
+        .flatMap((candidate) => visibleWindows(candidate))
+        .filter((window) => tracker.get_window_app(window)?.get_id() === editorId)
+        .map((window) => ({ window, project: byFolder.get(projectFolder(window.get_title())) }))
+        .filter(({ project }) => project)
     }
 
     _recentWorkspaces() {
@@ -1261,11 +1327,7 @@ const WorkspacePicker = GObject.registerClass(
     }
 
     _sessionForWorkspace(workspace) {
-      for (const session of this._sessions.values()) {
-        if (session.workspace === workspace) return session
-      }
-
-      return null
+      return this._liveSessions().find((session) => session.workspace === workspace) ?? null
     }
 
     // what the panel shows for the active workspace. one without a session
@@ -1274,8 +1336,12 @@ const WorkspacePicker = GObject.registerClass(
       const active = global.workspace_manager.get_active_workspace()
       if (active === this._homeWorkspace()) return this._homeSession()
 
-      const session = this._liveSessions().find((live) => live.workspace === active)
-      return session ?? { name: `Workspace ${active.index() + 1}`, color: null }
+      return (
+        this._sessionForWorkspace(active) ?? {
+          name: `Workspace ${active.index() + 1}`,
+          color: null,
+        }
+      )
     }
 
     // reacting to the switch itself rather than to a shortcut covers every
@@ -1405,6 +1471,7 @@ const WorkspacePicker = GObject.registerClass(
       const index = target.index()
 
       this._claimWindows(target, layout, wanted)
+      this._fetchEditor(workspace, target, layout)
       target.activate(global.get_current_time())
 
       this._sessions.set(workspace.name, {
@@ -1419,6 +1486,18 @@ const WorkspacePicker = GObject.registerClass(
       this._runLaunchSteps(
         this._launchSteps(wanted, { name: workspace.name, path: workspace.path, index }),
       )
+    }
+
+    // an editor restored after a restart already shows the project, and the
+    // launch only focuses that window. left where it is, it would pull the
+    // shell back to its workspace and leave the session on an empty one
+    _fetchEditor(workspace, target, layout) {
+      for (const { window, project } of this._editorWindows()) {
+        if (project.name !== workspace.name || window.get_workspace() === target) continue
+
+        window.change_workspace(target)
+        placeWindow(window, layout)
+      }
     }
 
     _launchSteps(wanted, { name, path, index }) {
@@ -1579,6 +1658,9 @@ export default class XiwsExtension extends Extension {
     // removing a workspace renumbers the ones after it without a switch
     this._countHandlerId = global.workspace_manager.connect('notify::n-workspaces', showSession)
     this._picker.connect('sessions-changed', showSession)
+    // an editor restored after a restart is only recognised once its window
+    // carries a title, focus is the cheapest moment that covers it
+    this._focusHandlerId = global.display.connect('notify::focus-window', showSession)
     showSession()
 
     this._snapAssist = new SnapAssist(this._settings)
@@ -1615,6 +1697,8 @@ export default class XiwsExtension extends Extension {
     }
     this._switchHandlerId = 0
     this._countHandlerId = 0
+    if (this._focusHandlerId) global.display.disconnect(this._focusHandlerId)
+    this._focusHandlerId = 0
 
     this._sessionIndicator?.destroy()
     this._sessionIndicator = null

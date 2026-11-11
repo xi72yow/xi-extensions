@@ -71,15 +71,6 @@ export class SessionColors {
   }
 }
 
-export function colorDot(color) {
-  return new St.Widget({
-    style_class: 'xiws-session-dot',
-    style: color ? `background-color: ${color};` : '',
-    visible: Boolean(color),
-    y_align: Clutter.ActorAlign.CENTER,
-  })
-}
-
 function luminance(hex) {
   const channels = [1, 3, 5].map((start) => parseInt(hex.slice(start, start + 2), 16) / 255)
   const [red, green, blue] = channels.map((value) =>
@@ -92,6 +83,11 @@ function luminance(hex) {
 function wantsDarkText(hex) {
   const light = luminance(hex) + 0.05
   return light / 0.05 > 1.05 / light
+}
+
+// background and a foreground that reads on it, by the wcag contrast ratio
+export function sessionPaint(color) {
+  return { background: color, foreground: wantsDarkText(color) ? '#000000' : '#ffffff' }
 }
 
 // names the active workspace next to the activities button and tints the
